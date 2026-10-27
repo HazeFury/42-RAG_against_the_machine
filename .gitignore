@@ -20,7 +20,11 @@ env/
 venv/
 
 # Project data and artifacts (mandatory: no heavy data in git)
-data/
+data/raw/*
+!data/raw/.gitkeep
+data/processed
+data/output
+
 *.model
 *.bin
 *.tar.gz
