@@ -23,6 +23,12 @@ class MinimalSource(BaseModel):
         return self.last_character_index - self.first_character_index
 
 
+class Chunk(MinimalSource):
+    """Internal chunk representation with source location and text."""
+
+    text: str
+
+
 class UnansweredQuestion(BaseModel):
     """Represents a question without ground-truth answers or sources."""
 
