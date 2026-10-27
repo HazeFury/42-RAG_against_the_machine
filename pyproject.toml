@@ -1,20 +1,29 @@
 [project]
-name = "template-42-project"
+name = "rag-against-the-machine"
 version = "0.1.0"
-description = "A standard 42 Python project template"
+description = "Retrieval-Augmented Generation system over vLLM codebase"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
     { name = "marberge", email = "marberge@student.42lyon.fr" }
 ]
 
-dependencies = []
+dependencies = [
+    "pydantic>=2.0.0",
+    "bm25s>=0.2.0",
+    "fire>=0.6.0",
+    "tqdm>=4.66.0",
+    "transformers>=4.40.0",
+    "torch>=2.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+]
 
 [dependency-groups]
 dev = [
-    "flake8>=7.3.0",
-    "mypy>=1.20.0",
-    "pytest>=9.0.3",
+    "flake8>=7.0.0",
+    "mypy>=1.10.0",
+    "pytest>=8.0.0",
 ]
 
 [build-system]
@@ -35,21 +44,3 @@ check_untyped_defs = true
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-
-[tool.uv.sources]
-mazegenerator = { path = "mazegenerator-2.1.0-py3-none-any.whl" }
-
-[tool.ruff]
-# Set the maximum line length to 80 characters.
-line-length = 79
-
-[tool.ruff.lint]
-# Enable specific rule sets.
-# "E" and "W" are for pycodestyle (equivalent to Flake8 base rules)
-# "F" is for Pyflakes
-select = ["E", "F", "W"]
-
-[tool.ruff.format]
-# Standardize formatting
-quote-style = "double"
-indent-style = "space"
