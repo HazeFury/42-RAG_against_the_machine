@@ -88,9 +88,9 @@ class RAGCLI:
                 print(f"No results found for: {query}")
                 return
 
-            for rank, src in enumerate(sources, start=1):
+            for src in sources:
                 print(
-                    f"[{rank}] {src.file_path} "
+                    f"{src.file_path} "
                     f"[{src.first_character_index}:{src.last_character_index}]"
                 )
         except Exception as e:

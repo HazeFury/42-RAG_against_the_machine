@@ -106,4 +106,3 @@ def test_tokenize_edge_cases() -> None:
     assert tokenize("") == []
     assert tokenize("   \n\t  ") == []
     assert tokenize("!@#$%^&*()_+-=[]{}|;':,.<>?/") == []
-
