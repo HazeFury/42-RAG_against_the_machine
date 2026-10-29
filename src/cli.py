@@ -164,9 +164,18 @@ class RAGCLI:
                 index_dir=index_dir,
                 model_name=model_name,
             )
-            if ans:
-                print(f"Question: {ans.question}")
-                print(f"Answer: {ans.answer}")
+            if ans is None:
+                print("Error: Failed to generate answer.", file=sys.stderr)
+                return
+
+            print(f"Question: {ans.question}\n")
+            print("Retrieved sources:")
+            for i, src in enumerate(ans.retrieved_sources, 1):
+                print(
+                    f"  {i}. {src.file_path} "
+                    f"[{src.first_character_index}:{src.last_character_index}]"
+                )
+            print(f"\nAnswer:\n{ans.answer}")
         except Exception as e:
             print(f"Error during answering: {e}", file=sys.stderr)
 
