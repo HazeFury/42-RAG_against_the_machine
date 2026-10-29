@@ -9,13 +9,13 @@ import os
 import re
 
 SYSTEM_PROMPT = (
-    "You are a precise technical assistant for the vLLM codebase.\n"
-    "Answer the user's question concisely, accurately, and strictly grounded "
-    "in the provided context.\n"
-    "Do not extrapolate or hallucinate. If the context does not contain "
-    "sufficient information to answer the question, state:\n"
-    "\"The provided context does not contain sufficient information to "
-    "answer this question.\""
+    "You are a technical assistant for vLLM.\n"
+    "Answer the user's question based on the provided source code and "
+    "documentation snippets (including file names, classes, and "
+    "functions).\n"
+    "Be concise, accurate, and direct.\n"
+    "If the context genuinely contains no relevant information, state that "
+    "the context does not contain sufficient information."
 )
 
 
