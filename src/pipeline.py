@@ -7,20 +7,40 @@ from src.evaluation.evaluator import (
     evaluate_files,
     format_evaluation_report,
 )
+from src.indexing.indexer import build_index
 from src.models import (
     MinimalAnswer,
+    MinimalSearchResults,
     MinimalSource,
+    RagDataset,
     StudentSearchResults,
 )
-from src.utils.io_helpers import safe_read_json
+from src.retrieval.lexical_retriever import LexicalRetriever
+from src.utils.io_helpers import safe_read_json, safe_write_json
 
 
 class RagPipeline:
     """Central orchestrator for the RAG system stages."""
 
     def __init__(self) -> None:
-        """Initialize the pipeline."""
-        pass
+        """Initialize the pipeline with lazy loaded retriever."""
+        self._retriever: Optional[LexicalRetriever] = None
+        self._retriever_index_dir: Optional[Path] = None
+
+    def _get_retriever(self, index_dir: str | Path) -> LexicalRetriever:
+        """Get or initialize cached in-memory retriever for index directory.
+
+        Args:
+            index_dir: Directory containing index and metadata.
+
+        Returns:
+            LexicalRetriever instance.
+        """
+        path = Path(index_dir)
+        if self._retriever is None or self._retriever_index_dir != path:
+            self._retriever = LexicalRetriever(index_dir=path)
+            self._retriever_index_dir = path
+        return self._retriever
 
     def index(
         self,
@@ -38,9 +58,20 @@ class RagPipeline:
         Returns:
             True on success, False otherwise.
         """
-        # Full indexing implementation will be plugged in on Day 2 & 3
-        print(f"Indexing corpus from {corpus_dir} into {output_dir}...")
-        print(f"Max chunk size: {max_chunk_size}")
+        total_chunks, elapsed = build_index(
+            corpus_dir=corpus_dir,
+            output_dir=output_dir,
+            max_chunk_size=max_chunk_size,
+            show_progress=True,
+        )
+        # Reset cached retriever so next search reloads new index
+        self._retriever = None
+        self._retriever_index_dir = None
+
+        print(
+            f"Ingestion complete! Indexed {total_chunks} chunks "
+            f"under {output_dir}/ in {elapsed:.2f}s"
+        )
         return True
 
     def search(
@@ -59,8 +90,8 @@ class RagPipeline:
         Returns:
             List of retrieved MinimalSource objects.
         """
-        # Full retrieval implementation will be plugged in on Day 3
-        return []
+        retriever = self._get_retriever(index_dir=index_dir)
+        return retriever.retrieve(query=query, k=k)
 
     def search_dataset(
         self,
@@ -80,8 +111,57 @@ class RagPipeline:
         Returns:
             Output file path on success, or None on failure.
         """
-        # Full batch search implementation will be plugged in on Day 3
-        return None
+        raw_data = safe_read_json(dataset_path)
+        if raw_data is None:
+            return None
+
+        try:
+            dataset = RagDataset.model_validate(raw_data)
+        except Exception:
+            return None
+
+        retriever = self._get_retriever(index_dir=index_dir)
+
+        questions: list[str] = []
+        question_ids: list[str] = []
+        for q in dataset.rag_questions:
+            if isinstance(q, dict):
+                questions.append(str(q.get("question", "")))
+                question_ids.append(str(q.get("question_id", "")))
+            else:
+                questions.append(str(getattr(q, "question", "")))
+                question_ids.append(str(getattr(q, "question_id", "")))
+
+        batch_sources = retriever.retrieve_batch(
+            queries=questions,
+            k=k,
+            show_progress=True,
+        )
+
+        search_results: list[MinimalSearchResults] = []
+        for q_id, q_text, sources in zip(
+            question_ids, questions, batch_sources
+        ):
+            search_results.append(
+                MinimalSearchResults(
+                    question_id=q_id,
+                    question=q_text,
+                    retrieved_sources=sources,
+                )
+            )
+
+        student_res = StudentSearchResults(
+            search_results=search_results,
+            k=k,
+        )
+
+        dataset_filename = Path(dataset_path).name
+        out_file = Path(save_directory) / dataset_filename
+        success = safe_write_json(out_file, student_res.model_dump())
+        if not success:
+            return None
+
+        return str(out_file)
 
     def answer(
         self,
@@ -101,7 +181,7 @@ class RagPipeline:
         Returns:
             MinimalAnswer object or None on failure.
         """
-        # Full generation implementation will be plugged in on Day 5
+        # Generation will be connected on Day 5
         return None
 
     def answer_dataset(
@@ -120,7 +200,7 @@ class RagPipeline:
         Returns:
             Output file path on success, or None on failure.
         """
-        # Full batch answer implementation will be plugged in on Day 5
+        # Generation will be connected on Day 5
         return None
 
     def evaluate(

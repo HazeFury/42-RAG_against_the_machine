@@ -6,12 +6,11 @@ without importing or calling the moulinette binary.
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from src.config import DEFAULT_IOU_THRESHOLD, EVALUATION_K_VALUES
 from src.models import (
     AnsweredQuestion,
-    MinimalSearchResults,
     MinimalSource,
     RagDataset,
     StudentSearchResults,
@@ -132,16 +131,22 @@ def evaluate_dataset(
         Dictionary mapping each k to its average recall score.
     """
     # Index student search results by question_id
-    student_map: dict[str, MinimalSearchResults] = {
-        res.question_id: res for res in student_results.search_results
-    }
+    student_map: dict[str, Any] = {}
+    for res in student_results.search_results:
+        qid = (
+            getattr(res, "question_id", None)
+            or (res.get("question_id") if isinstance(res, dict) else "")
+        )
+        if qid:
+            student_map[qid] = res
 
     # Extract answered questions with non-empty ground-truth sources
-    answered_questions: list[AnsweredQuestion] = [
-        q
-        for q in ground_truth.rag_questions
-        if isinstance(q, AnsweredQuestion)
-    ]
+    answered_questions: list[Any] = []
+    for q in ground_truth.rag_questions:
+        if isinstance(q, AnsweredQuestion):
+            answered_questions.append(q)
+        elif isinstance(q, dict) and q.get("sources"):
+            answered_questions.append(q)
 
     if not answered_questions:
         return {k: 0.0 for k in k_values}
@@ -149,13 +154,34 @@ def evaluate_dataset(
     recalls_by_k: dict[int, list[float]] = {k: [] for k in k_values}
 
     for question in answered_questions:
-        student_res = student_map.get(question.question_id)
-        retrieved = student_res.retrieved_sources if student_res else []
+        if isinstance(question, dict):
+            qid = str(question.get("question_id", ""))
+            raw_gt = question.get("sources", [])
+        else:
+            qid = str(getattr(question, "question_id", ""))
+            raw_gt = getattr(question, "sources", [])
+
+        student_res = student_map.get(qid)
+        if isinstance(student_res, dict):
+            raw_retrieved = student_res.get("retrieved_sources", [])
+        elif student_res is not None:
+            raw_retrieved = getattr(student_res, "retrieved_sources", [])
+        else:
+            raw_retrieved = []
+
+        retrieved = [
+            MinimalSource.model_validate(r) if isinstance(r, dict) else r
+            for r in raw_retrieved
+        ]
+        gt_sources = [
+            MinimalSource.model_validate(g) if isinstance(g, dict) else g
+            for g in raw_gt
+        ]
 
         for k in k_values:
             score = calculate_question_recall(
                 retrieved_sources=retrieved,
-                ground_truth_sources=question.sources,
+                ground_truth_sources=gt_sources,
                 k=k,
                 min_iou=min_iou,
             )

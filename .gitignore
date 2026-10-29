@@ -31,6 +31,8 @@ data/output
 *.zip
 *.log
 
+moulinette
+
 # OS & Editor files
 .DS_Store
 Thumbs.db
