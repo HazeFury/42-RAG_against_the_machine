@@ -2,11 +2,16 @@
 
 from pathlib import Path
 from typing import Optional
+import uuid
+
+from tqdm import tqdm
 
 from src.evaluation.evaluator import (
     evaluate_files,
     format_evaluation_report,
 )
+from src.generation.context_builder import ContextBuilder
+from src.generation.llm_generator import LLMGenerator
 from src.indexing.indexer import build_index
 from src.models import (
     MinimalAnswer,
@@ -14,6 +19,7 @@ from src.models import (
     MinimalSource,
     RagDataset,
     StudentSearchResults,
+    StudentSearchResultsAndAnswer,
 )
 from src.retrieval.lexical_retriever import LexicalRetriever
 from src.utils.io_helpers import safe_read_json, safe_write_json
@@ -23,9 +29,43 @@ class RagPipeline:
     """Central orchestrator for the RAG system stages."""
 
     def __init__(self) -> None:
-        """Initialize the pipeline with lazy loaded retriever."""
+        """Initialize the pipeline with lazy loaded components."""
         self._retriever: Optional[LexicalRetriever] = None
         self._retriever_index_dir: Optional[Path] = None
+        self._generator: Optional[LLMGenerator] = None
+        self._context_builder: Optional[ContextBuilder] = None
+
+    def _get_generator(
+        self, model_name: str = "Qwen/Qwen3-0.6B"
+    ) -> LLMGenerator:
+        """Get or initialize cached LLM generator.
+
+        Args:
+            model_name: Hugging Face model identifier.
+
+        Returns:
+            LLMGenerator instance.
+        """
+        if self._generator is None or self._generator.model_name != model_name:
+            self._generator = LLMGenerator(model_name=model_name)
+        return self._generator
+
+    def _get_context_builder(
+        self, model_name: str = "Qwen/Qwen3-0.6B"
+    ) -> ContextBuilder:
+        """Get or initialize ContextBuilder with model tokenizer.
+
+        Args:
+            model_name: Hugging Face model identifier.
+
+        Returns:
+            ContextBuilder instance.
+        """
+        if self._context_builder is None:
+            generator = self._get_generator(model_name=model_name)
+            tokenizer = generator.get_tokenizer()
+            self._context_builder = ContextBuilder(tokenizer=tokenizer)
+        return self._context_builder
 
     def _get_retriever(self, index_dir: str | Path) -> LexicalRetriever:
         """Get or initialize cached in-memory retriever for index directory.
@@ -181,8 +221,24 @@ class RagPipeline:
         Returns:
             MinimalAnswer object or None on failure.
         """
-        # Generation will be connected on Day 5
-        return None
+        if not query or not query.strip() or k <= 0:
+            return None
+
+        sources = self.search(query=query, k=k, index_dir=index_dir)
+        generator = self._get_generator(model_name=model_name)
+        context_builder = self._get_context_builder(model_name=model_name)
+
+        context = context_builder.build_context(sources)
+        generated_answer = generator.generate_answer(
+            question=query, context=context
+        )
+
+        return MinimalAnswer(
+            question_id=str(uuid.uuid4()),
+            question=query,
+            retrieved_sources=sources,
+            answer=generated_answer,
+        )
 
     def answer_dataset(
         self,
@@ -200,8 +256,49 @@ class RagPipeline:
         Returns:
             Output file path on success, or None on failure.
         """
-        # Generation will be connected on Day 5
-        return None
+        raw_data = safe_read_json(student_search_results_path)
+        if raw_data is None:
+            return None
+
+        try:
+            student_results = StudentSearchResults.model_validate(raw_data)
+        except Exception:
+            return None
+
+        generator = self._get_generator(model_name=model_name)
+        context_builder = self._get_context_builder(model_name=model_name)
+
+        answers: list[MinimalAnswer] = []
+        for item in tqdm(
+            student_results.search_results,
+            desc="Generating answers",
+            unit="q",
+        ):
+            context = context_builder.build_context(item.retrieved_sources)
+            gen_text = generator.generate_answer(
+                question=item.question, context=context
+            )
+            answers.append(
+                MinimalAnswer(
+                    question_id=item.question_id,
+                    question=item.question,
+                    retrieved_sources=item.retrieved_sources,
+                    answer=gen_text,
+                )
+            )
+
+        output_obj = StudentSearchResultsAndAnswer(
+            search_results=answers,
+            k=student_results.k,
+        )
+
+        dataset_filename = Path(student_search_results_path).name
+        out_file = Path(save_directory) / dataset_filename
+        success = safe_write_json(out_file, output_obj.model_dump())
+        if not success:
+            return None
+
+        return str(out_file)
 
     def evaluate(
         self,
