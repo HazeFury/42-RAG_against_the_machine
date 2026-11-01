@@ -10,7 +10,7 @@ run:
 	@uv run python -m src --help
 
 debug:
-	@uv run python -m pdb -m src
+	@uv run python -m pdb -m src $(ARGS)
 
 clean:
 	@echo "Removing temporary files and caches..."
