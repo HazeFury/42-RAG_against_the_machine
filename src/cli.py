@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 
+from src.config import MAX_MAX_CHUNK_SIZE, MIN_MAX_CHUNK_SIZE
 from src.pipeline import RagPipeline
 
 
@@ -27,9 +28,14 @@ class RAGCLI:
             output_dir: Path to directory where index will be stored.
         """
         try:
-            if max_chunk_size <= 0:
+            if (
+                max_chunk_size < MIN_MAX_CHUNK_SIZE
+                or max_chunk_size > MAX_MAX_CHUNK_SIZE
+            ):
                 print(
-                    "Error: max_chunk_size must be a positive integer.",
+                    "Error: max_chunk_size must be between "
+                    f"{MIN_MAX_CHUNK_SIZE} and {MAX_MAX_CHUNK_SIZE} "
+                    f"characters (got {max_chunk_size}).",
                     file=sys.stderr,
                 )
                 return

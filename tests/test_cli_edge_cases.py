@@ -8,8 +8,10 @@ def test_cli_index_edge_cases(capsys: object) -> None:
     """Index should reject negative chunk sizes or missing directories."""
     cli = RAGCLI()
 
-    # Negative chunk size
+    # Chunk size out of [100, 2000] bounds
     cli.index(max_chunk_size=-10)
+    cli.index(max_chunk_size=10)
+    cli.index(max_chunk_size=2500)
 
     # Missing corpus directory
     cli.index(corpus_dir="non_existent_directory_xyz")

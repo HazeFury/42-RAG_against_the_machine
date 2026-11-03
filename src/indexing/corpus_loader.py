@@ -42,6 +42,7 @@ IGNORED_DIRECTORIES: set[str] = {
     "dist",
     "build",
     "egg-info",
+    "tests",
 }
 
 

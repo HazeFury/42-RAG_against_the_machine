@@ -40,6 +40,7 @@ def slice_range_by_lines(
     if end - start <= max_chunk_size:
         return [(start, end)]
 
+    effective_overlap = min(overlap, max(0, max_chunk_size // 4))
     spans: list[tuple[int, int]] = []
     curr = start
 
@@ -63,7 +64,7 @@ def slice_range_by_lines(
             break
 
         # Advance with overlap, ensuring strictly positive progress
-        next_curr = max(curr + 1, chunk_end - overlap)
+        next_curr = max(curr + 1, chunk_end - effective_overlap)
         next_nl = content.rfind("\n", curr, next_curr)
         if next_nl != -1 and next_nl >= curr:
             next_curr = next_nl + 1
@@ -291,19 +292,48 @@ def chunk_markdown_text(
         set([0] + [m.start() for m in matches] + [len(content)])
     )
     spans_list: list[tuple[int, int]] = []
+    curr_start: int | None = None
 
     for i in range(len(breakpoints) - 1):
-        sec_start = breakpoints[i]
-        sec_end = breakpoints[i + 1]
-        if content[sec_start:sec_end].strip():
-            spans_list.extend(
-                slice_range_by_lines(
-                    content=content,
-                    start=sec_start,
-                    end=sec_end,
-                    max_chunk_size=max_chunk_size,
-                )
+        s = breakpoints[i]
+        e = breakpoints[i + 1]
+        raw = content[s:e].strip()
+        if not raw:
+            continue
+
+        if curr_start is None:
+            curr_start = s
+
+        # Check if this section has body text beyond its heading
+        lines = raw.splitlines()
+        has_body = True
+        if re.match(r"^#{1,6}\s+", lines[0]):
+            body = "\n".join(lines[1:]).strip()
+            has_body = len(body) > 10
+
+        # If bare heading without body and not last section, merge with next
+        if not has_body and i < len(breakpoints) - 2:
+            continue
+
+        spans_list.extend(
+            slice_range_by_lines(
+                content=content,
+                start=curr_start,
+                end=e,
+                max_chunk_size=max_chunk_size,
             )
+        )
+        curr_start = None
+
+    if curr_start is not None and curr_start < len(content):
+        spans_list.extend(
+            slice_range_by_lines(
+                content=content,
+                start=curr_start,
+                end=len(content),
+                max_chunk_size=max_chunk_size,
+            )
+        )
 
     return [
         Chunk(
