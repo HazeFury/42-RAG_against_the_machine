@@ -1,10 +1,5 @@
-"""Data models for RAG system validation and serialization.
+"""Data models for RAG system validation and serialization."""
 
-These models strictly implement the schema defined in Section VI.4
-of the 42 subject specification.
-"""
-
-from typing import Union
 import uuid
 
 from pydantic import BaseModel, Field
@@ -46,7 +41,7 @@ class AnsweredQuestion(UnansweredQuestion):
 class RagDataset(BaseModel):
     """Represents a dataset of questions (answered or unanswered)."""
 
-    rag_questions: list[Union[AnsweredQuestion, UnansweredQuestion]]
+    rag_questions: list[AnsweredQuestion | UnansweredQuestion]
 
 
 class MinimalSearchResults(BaseModel):

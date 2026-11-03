@@ -6,8 +6,8 @@ Implements two distinct chunking strategies:
 """
 
 import ast
-from pathlib import Path
 import re
+from pathlib import Path
 
 from src.config import DEFAULT_MAX_CHUNK_SIZE
 from src.models import Chunk
@@ -288,7 +288,7 @@ def chunk_markdown_text(
         ]
 
     breakpoints = sorted(
-        list(set([0] + [m.start() for m in matches] + [len(content)]))
+        set([0] + [m.start() for m in matches] + [len(content)])
     )
     spans_list: list[tuple[int, int]] = []
 

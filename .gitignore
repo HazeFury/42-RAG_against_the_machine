@@ -24,6 +24,7 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed
 data/output
+data/test
 
 *.model
 *.bin

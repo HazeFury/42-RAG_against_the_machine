@@ -8,7 +8,7 @@ Ce document détaille l'organisation complète du code contenu dans le dossier `
 
 ```text
 src/
-├── __init__.py                  # Déclaration du package Python principal
+├── __init__.py                  
 ├── __main__.py                  # Point d'entrée de la commande 'python -m src' (Fire)
 ├── cli.py                       # Contrôleur CLI : validation des arguments et affichage
 ├── config.py                    # Constantes par défaut (tailles, seuils, modèles, chemins)
@@ -16,27 +16,27 @@ src/
 ├── pipeline.py                  # Orchestrateur central connectant toutes les étapes
 │
 ├── indexing/                    # ÉTAPE 1 : Ingestion, Découpage et Indexation
-│   ├── __init__.py              # Export des briques d'indexation
+│   ├── __init__.py              
 │   ├── corpus_loader.py         # Parcours récursif, filtrage des fichiers et chemins relatifs
 │   ├── chunkers.py              # Double stratégie de découpage (Python AST vs Markdown) <= 2000 car.
 │   ├── tokenizer.py             # Tokenizer adapté au code (camelCase, snake_case, injection de chemin)
 │   └── indexer.py               # Création, calcul BM25s et persistance sur disque
 │
 ├── retrieval/                   # ÉTAPE 2 : Recherche et Récupération Lexicale
-│   ├── __init__.py              # Export du retriever
+│   ├── __init__.py             
 │   └── lexical_retriever.py     # Chargement de l'index BM25 en RAM et déduplication spatiale
 │
 ├── generation/                  # ÉTAPES 3 & 4 : Augmentation de Contexte et Génération LLM
-│   ├── __init__.py              # Export du constructeur de contexte et du générateur
+│   ├── __init__.py              
 │   ├── context_builder.py       # Extraction des tranches exactes [first:last] et budget de tokens
 │   └── llm_generator.py         # Inférence CPU locale (Qwen3-0.6B) en Lazy Loading avec grounding
 │
 ├── evaluation/                  # ÉTAPE 5 : Auto-Évaluation de la Qualité
-│   ├── __init__.py              # Export des fonctions d'évaluation
+│   ├── __init__.py              
 │   └── evaluator.py             # Calcul mathématique de l'IoU 1D (seuil 0.05) et Recall@k
 │
 └── utils/                       # Utilitaires Généraux
-    ├── __init__.py              # Export des helpers
+    ├── __init__.py              
     └── io_helpers.py            # Lecture/Écriture JSON sécurisée, normalisation de chemins et fsync
 ```
 
