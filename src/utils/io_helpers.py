@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 def normalize_corpus_path(path: str | Path) -> str:
@@ -15,12 +15,11 @@ def normalize_corpus_path(path: str | Path) -> str:
         Normalized relative path string (e.g. data/raw/vllm-0.10.1/...).
     """
     clean_path = str(path).replace("\\", "/")
-    if clean_path.startswith("./"):
-        clean_path = clean_path[2:]
+    clean_path = clean_path.removeprefix("./")
     return clean_path
 
 
-def safe_read_json(file_path: str | Path) -> Optional[Any]:
+def safe_read_json(file_path: str | Path) -> Any | None:
     """Safely load and parse a JSON file with error handling.
 
     Args:
