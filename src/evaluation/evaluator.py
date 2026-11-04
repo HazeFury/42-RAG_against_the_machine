@@ -1,12 +1,8 @@
-"""Evaluation module for calculating IoU and Recall@k metrics.
-
-This module replicates the official evaluation logic used by the 42 moulinette
-without importing or calling the moulinette binary.
-"""
+"""Evaluation module for calculating IoU and Recall@k metrics."""
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from src.config import DEFAULT_IOU_THRESHOLD, EVALUATION_K_VALUES
 from src.models import (
@@ -133,9 +129,8 @@ def evaluate_dataset(
     # Index student search results by question_id
     student_map: dict[str, Any] = {}
     for res in student_results.search_results:
-        qid = (
-            getattr(res, "question_id", None)
-            or (res.get("question_id") if isinstance(res, dict) else "")
+        qid = getattr(res, "question_id", None) or (
+            res.get("question_id") if isinstance(res, dict) else ""
         )
         if qid:
             student_map[qid] = res
@@ -143,9 +138,11 @@ def evaluate_dataset(
     # Extract answered questions with non-empty ground-truth sources
     answered_questions: list[Any] = []
     for q in ground_truth.rag_questions:
-        if isinstance(q, AnsweredQuestion):
-            answered_questions.append(q)
-        elif isinstance(q, dict) and q.get("sources"):
+        if (
+            isinstance(q, AnsweredQuestion)
+            or isinstance(q, dict)
+            and q.get("sources")
+        ):
             answered_questions.append(q)
 
     if not answered_questions:
@@ -227,7 +224,7 @@ def evaluate_files(
     dataset_path: str | Path,
     k_values: Sequence[int] = EVALUATION_K_VALUES,
     min_iou: float = DEFAULT_IOU_THRESHOLD,
-) -> Optional[dict[int, float]]:
+) -> dict[int, float] | None:
     """Load JSON files and evaluate Recall@k metrics.
 
     Args:
