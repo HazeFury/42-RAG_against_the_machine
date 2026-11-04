@@ -1,8 +1,9 @@
 """Command-Line Interface for the RAG system using Python Fire."""
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
+from src.config import MAX_MAX_CHUNK_SIZE, MIN_MAX_CHUNK_SIZE
 from src.pipeline import RagPipeline
 
 
@@ -27,9 +28,14 @@ class RAGCLI:
             output_dir: Path to directory where index will be stored.
         """
         try:
-            if max_chunk_size <= 0:
+            if (
+                max_chunk_size < MIN_MAX_CHUNK_SIZE
+                or max_chunk_size > MAX_MAX_CHUNK_SIZE
+            ):
                 print(
-                    "Error: max_chunk_size must be a positive integer.",
+                    "Error: max_chunk_size must be between "
+                    f"{MIN_MAX_CHUNK_SIZE} and {MAX_MAX_CHUNK_SIZE} "
+                    f"characters (got {max_chunk_size}).",
                     file=sys.stderr,
                 )
                 return
@@ -65,6 +71,10 @@ class RAGCLI:
         try:
             if not query or not query.strip():
                 print("No search query provided. Returning 0 results.")
+                return
+
+            if len(query.strip().split()) < 3:
+                print("Less than 3 words provided. Returning 0 results.")
                 return
 
             if k <= 0:
@@ -152,6 +162,10 @@ class RAGCLI:
         try:
             if not query or not query.strip():
                 print("No query provided.")
+                return
+
+            if len(query.strip().split()) < 3:
+                print("Less than 3 words provided. Returning 0 results.")
                 return
 
             if k <= 0:

@@ -4,9 +4,9 @@ Implements lazy loading to prevent memory and runtime overhead during
 purely lexical search or indexing workflows.
 """
 
-from typing import Any, Optional
 import os
 import re
+from typing import Any
 
 SYSTEM_PROMPT = (
     "You are a precise technical assistant for the vLLM codebase.\n"
@@ -14,8 +14,8 @@ SYSTEM_PROMPT = (
     "in the provided context.\n"
     "Do not extrapolate or hallucinate. If the context does not contain "
     "sufficient information to answer the question, state:\n"
-    "\"The provided context does not contain sufficient information to "
-    "answer this question.\""
+    '"The provided context does not contain sufficient information to '
+    'answer this question."'
 )
 
 
@@ -38,8 +38,8 @@ class LLMGenerator:
         self.model_name = model_name
         self.device = device
         self.max_new_tokens = max_new_tokens
-        self._tokenizer: Optional[Any] = None
-        self._model: Optional[Any] = None
+        self._tokenizer: Any | None = None
+        self._model: Any | None = None
 
     def load_model(self) -> None:
         """Load tokenizer and model on demand if not already loaded."""
@@ -123,8 +123,7 @@ class LLMGenerator:
 
         clean_context = context.strip() if context else "No context available."
         user_content = (
-            f"Context:\n{clean_context}\n\n"
-            f"Question:\n{question.strip()}"
+            f"Context:\n{clean_context}\n\nQuestion:\n{question.strip()}"
         )
 
         messages = [

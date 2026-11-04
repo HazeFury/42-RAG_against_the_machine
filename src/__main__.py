@@ -4,11 +4,21 @@ import sys
 
 try:
     import fire
+
     from src.cli import RAGCLI
 
     def main() -> None:
         """Run Python Fire CLI interface."""
-        fire.Fire(RAGCLI)
+        try:
+            fire.Fire(RAGCLI)
+        except KeyboardInterrupt:
+            print(
+                "\n\033[93m[INFO] User deliberately interrupted"
+                " the program\033[0m",
+                file=sys.stderr,
+            )
+
+            sys.exit(0)
 
 except ImportError:
 

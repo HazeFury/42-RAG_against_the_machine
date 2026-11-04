@@ -2,8 +2,8 @@
 
 import hashlib
 import os
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Optional
 
 from src.utils.io_helpers import normalize_corpus_path
 
@@ -42,6 +42,7 @@ IGNORED_DIRECTORIES: set[str] = {
     "dist",
     "build",
     "egg-info",
+    "tests",
 }
 
 
@@ -81,7 +82,7 @@ def is_indexable_file(file_path: Path) -> bool:
     return suffix in SUPPORTED_EXTENSIONS
 
 
-def read_file_safely(file_path: Path | str) -> Optional[str]:
+def read_file_safely(file_path: Path | str) -> str | None:
     """Read a text file strictly as UTF-8.
 
     Args:

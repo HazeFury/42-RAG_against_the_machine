@@ -32,7 +32,7 @@ data/test
 *.zip
 *.log
 
-moulinette
+moulinette*
 
 # OS & Editor files
 .DS_Store
