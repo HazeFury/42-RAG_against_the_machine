@@ -59,14 +59,14 @@ class MinimalAnswer(MinimalSearchResults):
 
 
 class StudentSearchResults(BaseModel):
-    """Container for search results evaluated by moulinette."""
+    """Container for search results."""
 
     search_results: list[MinimalSearchResults]
     k: int
 
 
 class StudentSearchResultsAndAnswer(BaseModel):
-    """Container for search results and answers evaluated by moulinette."""
+    """Container for search results and answers."""
 
     search_results: list[MinimalAnswer]
     k: int
