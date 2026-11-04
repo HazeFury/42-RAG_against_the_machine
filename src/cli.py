@@ -1,7 +1,7 @@
 """Command-Line Interface for the RAG system using Python Fire."""
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from src.config import MAX_MAX_CHUNK_SIZE, MIN_MAX_CHUNK_SIZE
 from src.pipeline import RagPipeline
@@ -71,6 +71,10 @@ class RAGCLI:
         try:
             if not query or not query.strip():
                 print("No search query provided. Returning 0 results.")
+                return
+
+            if len(query.strip().split()) < 3:
+                print("Less than 3 words provided. Returning 0 results.")
                 return
 
             if k <= 0:
@@ -158,6 +162,10 @@ class RAGCLI:
         try:
             if not query or not query.strip():
                 print("No query provided.")
+                return
+
+            if len(query.strip().split()) < 3:
+                print("Less than 3 words provided. Returning 0 results.")
                 return
 
             if k <= 0:
