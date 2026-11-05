@@ -58,9 +58,10 @@ data/raw/vllm-0.10.1/vllm/attention/ops/rocm_aiter_paged_attn.py [350:394]
    │     - tokenize(query) avec le même tokenizer qu'à l'indexation
    │     - Découpe camelCase / snake_case, minuscules, suppression des stopwords
    │     - Si aucun token ne ressort (ex: "!@#$%"), renvoie une liste vide []
-   │  b. Interrogation BM25 :
-   │     - Demande à bm25s les top (k * 3) candidats : self.retriever.retrieve([q_tokens], k=candidate_k)
-   │     - Récupère les scores et les identifiants de chunks
+   │  b. Interrogation BM25 élargie :
+   │     - Calcule fetch_k = min(max(k * 10, 50), len(metadata)) pour extraire jusqu'à 50 candidats
+   │     - Récupère les scores BM25 et les identifiants de chunks
+   │     - Si doc_type est renseigné, applique le multiplicateur de domaine (_compute_multiplier)
    │  c. Déduplication spatiale & Fusion intelligente :
    │     - Pour chaque candidat, retrouve ses coordonnées dans self.metadata
    │     - Si deux chunks candidats proviennent du MÊME fichier et se chevauchent
@@ -77,6 +78,6 @@ data/raw/vllm-0.10.1/vllm/attention/ops/rocm_aiter_paged_attn.py [350:394]
 ## 4. Les points clés à expliquer à l'oral
 
 1. **Le singleton en mémoire (*In-Memory Cache*)** : Le fichier d'index n'est lu qu'une seule fois. Si on fait 200 recherches d'affilée, l'index reste chargé en RAM dans l'instance de `LexicalRetriever`.
-2. **Pourquoi demander $k \times 3$ candidats au BM25 ?** : Si on demande directement 5 résultats, et que 3 d'entre eux sont des morceaux adjacents de la même fonction, on perd des places précieuses. En demandant 15 candidats, on fusionne ou écarte les morceaux du même endroit, laissant de la place pour d'autres fichiers pertinents.
-3. **Respect absolu des 2000 caractères** : La fusion ne s'opère QUE si `union_len <= 2000`. Aucun `MinimalSource` ne peut dépasser 2000 caractères.
+2. **Pourquoi extraire jusqu'à 50 candidats au BM25 ?** : Si on ne demandait que 5 résultats, et que plusieurs d'entre eux étaient des morceaux adjacents de la même fonction, on perdrait des places précieuses. En extrayant un pool élargi (jusqu'à 50 candidats), l'algorithme dispose de suffisamment de matière pour fusionner les morceaux contigus, écarter les doublons et laisser émerger les fichiers alternatifs les plus pertinents.
+3. **Respect absolu des 2000 caractères** : La fusion spatiale ne s'opère QUE si `union_len <= 2000`. Aucun `MinimalSource` ne peut dépasser 2000 caractères.
 

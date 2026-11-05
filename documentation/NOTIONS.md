@@ -108,9 +108,11 @@ Un découpage aveugle au nombre fixe de caractères risque de couper :
    - Regroupe les petits blocs et imports voisins jusqu'au plafond des 2000 caractères.
 2. **Markdown & Documentation (`chunk_markdown_text`)** :
    - Découpe selon la hiérarchie sémantique des titres Markdown (`#`, `##`, `###`), puis des doubles sauts de ligne (`\n\n`).
-3. **L'Invariant Absolu des 2000 Caractères** :
-   - Le sujet et la `moulinette` 42 **invalident l'intégralité du rendu** si un seul chunk dépasse 2000 caractères.
-   - Si une fonction unique fait 5000 caractères, notre fonction `slice_range_by_lines()` prend le relais pour la découper ligne par ligne avec ~150 caractères de chevauchement (*overlap*) pour ne jamais perdre le fil de lecture.
+   - Fusionne les titres orphelins sans corps de texte (>10 caractères) avec la section suivante afin de préserver le contexte sémantique et booster le Recall.
+3. **L'Invariant des 2000 Caractères et la Borne Basse (400 Caractères)** :
+   - *Borne haute (2000)* : Le sujet et la `moulinette` 42 **invalident l'intégralité du rendu** si un seul chunk dépasse 2000 caractères. Toute valeur supérieure est rejetée dès la CLI.
+   - *Borne basse (400)* : Sans borne minimale, une valeur infime (ex: 10 ou 100) découperait le corpus en centaines de milliers de micro-morceaux, provoquant un freeze machine par épuisement mémoire (OOM). La borne à 400 sécurise l'exécution.
+   - Si un bloc dépasse `max_chunk_size`, `slice_range_by_lines()` le découpe ligne par ligne avec un chevauchement adaptatif (`min(overlap, max_chunk_size // 4)`) assurant une progression positive constante.
 
 ---
 
@@ -153,10 +155,12 @@ Lors de nos premiers tests avec `Qwen3-0.6B`, le modèle répondait systématiqu
 - **Pourquoi ?** Un modèle de 600M de paramètres est prudent. Face à un prompt disant *"Do not extrapolate under any circumstances"*, si la question demande *"fused batched MoE"* et que le code renvoie `BatchedExperts` sans répéter la question mot pour mot, le modèle panique et prend la porte de sortie de secours (le refus).
 - **La solution** : Recadrer le prompt système pour lui expliquer que le contexte provient de fichiers de code et de documentation, et qu'il doit s'appuyer sur les signatures de fonctions, les classes et les chemins de fichiers.
 
-### Paramètres de Génération Déterministes
-- `do_sample=False` : Désactive l'échantillonnage aléatoire (recherche gloutonne / *Greedy Search*). La réponse est 100 % reproductible et stable d'une exécution à l'autre.
-- `enable_thinking=False` : Désactive le mode réflexion de Qwen3 afin de ne pas perdre de temps CPU à générer des blocs internes `<think>...</think>`.
-- `max_new_tokens=256` : Force des réponses courtes, directes et techniques.
+### Paramètres et Optimisations de Génération
+- `torch.bfloat16` & `device_map="auto"` : Empreinte mémoire divisée par deux et inférence accélérée avec repli automatique sur CPU.
+- `torch.inference_mode()` : Désactivation du calcul de gradients pour maximiser le débit.
+- `do_sample=False` : Recherche gloutonne (*Greedy Search*) pour un résultat 100 % déterministe et reproductible.
+- `enable_thinking=False` & nettoyage regex : Suppression du mode réflexion interne de Qwen3 pour débuter immédiatement sur la réponse factuelle et supprimer toute balise `<think>...</think>`.
+- `max_new_tokens=128` : Limite stricte pour des réponses techniques concises, réduisant la latence globale par question.
 
 ---
 
@@ -168,6 +172,7 @@ Pour démontrer une excellente maîtrise technique devant les correcteurs, voici
 | :--- | :--- |
 | **In-Memory Cache (Singleton)** | Expliquer que l'index BM25 reste chargé en RAM pour traiter 200 questions en 0,45 seconde sans relire le disque. |
 | **Lazy Loading (Chargement paresseux)** | Expliquer que `torch` et `transformers` ne sont importés que lors des commandes `answer`, laissant `search` et `index` ultra-légers. |
+| **Domain Boosting (Boost de domaine)** | Multiplicateur de score (x2.0) ajustant les poids des fichiers selon le domaine cible (`docs` vs `code`) pour maximiser le Recall. |
 | **Spatial Deduplication (NMS)** | Expliquer qu'on fusionne les extraits d'un même fichier s'ils se chevauchent afin de ne pas gaspiller les cartouches du top-$k$. |
 | **Syntactic Boundary (Frontière syntaxique)** | Expliquer que le chunker Python utilise l'AST pour ne pas couper le code en plein milieu d'une structure logique. |
 | **Token Budget (Budget de tokens)** | Expliquer qu'on empile les extraits jusqu'au plafond de 2048 tokens calculé par le tokenizer de Qwen. |
@@ -193,3 +198,6 @@ Pour démontrer une excellente maîtrise technique devant les correcteurs, voici
 
 ### Q5 : "Que se passe-t-il si l'utilisateur saisit une requête vide, uniquement des espaces ou des caractères spéciaux ?"
 > **Réponse** : "Le système gère ces cas limites de façon défensive sans jamais planter ni afficher de traceback : `cli.py` et `tokenizer.py` filtrent les chaînes vides ou sans caractères alphanumériques et retournent immédiatement une liste vide `[]` ou un message clair, garantissant zéro crash lors de la correction."
+
+### Q6 : "Pourquoi imposer une limite basse de 400 caractères sur `max_chunk_size` alors que le sujet ne spécifie qu'une limite haute ?"
+> **Réponse** : "Si un utilisateur ou un test malveillant tente d'indexer avec une valeur de 10 ou 100 caractères, cela découpe le corpus en centaines de milliers de micro-fragments, provoquant une explosion combinatoire des tokens et un freeze/OOM de la machine d'évaluation. Encadrer `max_chunk_size` entre 400 et 2000 caractères préserve la stabilité de l'environnement tout en garantissant des performances optimales de Recall (>= 80% sur la doc et >= 50% sur le code)."
