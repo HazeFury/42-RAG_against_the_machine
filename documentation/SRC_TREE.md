@@ -52,11 +52,11 @@ src/
 
 - **`src/cli.py`** :
   - **Rôle** : Interface en ligne de commande.
-  - **Fonctionnement** : Reçoit les arguments du terminal, valide les entrées pour éviter tout crash (vérifie que la requête n'est pas vide, que $k > 0$, que les fichiers existent), délègue le travail à `RagPipeline`, et gère l'affichage sur la sortie standard (`stdout`) ou d'erreur (`stderr`).
+  - **Fonctionnement** : Reçoit les arguments du terminal, valide rigoureusement les entrées pour éviter tout crash (vérifie que la requête n'est pas vide, que $k > 0$, que `400 <= max_chunk_size <= 2000`, que les fichiers existent), délègue le travail à `RagPipeline`, et gère l'affichage sur la sortie standard (`stdout`) ou d'erreur (`stderr`).
 
 - **`src/config.py`** :
   - **Rôle** : Fichier centralisant toutes les constantes et configurations du projet.
-  - **Fonctionnement** : Définit les valeurs par défaut : `DEFAULT_MAX_CHUNK_SIZE = 2000`, `DEFAULT_TOP_K = 5`, `DEFAULT_IOU_THRESHOLD = 0.05`, le nom du modèle `DEFAULT_MODEL_NAME = "Qwen/Qwen3-0.6B"`, et les chemins vers `data/raw`, `data/processed`, etc.
+  - **Fonctionnement** : Définit les valeurs par défaut et les bornes : `MIN_MAX_CHUNK_SIZE = 400`, `MAX_MAX_CHUNK_SIZE = 2000`, `DEFAULT_MAX_CHUNK_SIZE = 2000`, `DEFAULT_TOP_K = 5`, `DEFAULT_DATASET_TOP_K = 10`, `DEFAULT_IOU_THRESHOLD = 0.05`, le nom du modèle `DEFAULT_MODEL_NAME = "Qwen/Qwen3-0.6B"`, et les chemins vers `data/raw`, `data/processed`, etc.
 
 - **`src/models.py`** :
   - **Rôle** : Contrat de données strict imposé par la Section VI.4 du sujet 42.
@@ -73,7 +73,7 @@ src/
 
 - **`src/pipeline.py`** :
   - **Rôle** : L'orchestrateur central (*Chef d'orchestre*).
-  - **Fonctionnement** : La classe `RagPipeline` instancie et connecte les modules entre eux. Elle conserve une instance unique en cache du retriever lexical (`_retriever`) et du modèle LLM (`_generator`) pour éviter de recharger les données à chaque requête.
+  - **Fonctionnement** : La classe `RagPipeline` instancie et connecte les modules entre eux. Elle conserve une instance unique en cache du retriever lexical (`_retriever`) et du modèle LLM (`_generator`) pour éviter de recharger les données à chaque requête. Lors des recherches par lots (`search_dataset`), elle détecte automatiquement le domaine (`docs` ou `code` selon le nom du dataset) pour appliquer le multiplicateur de score ciblé.
 
 ---
 
@@ -85,10 +85,10 @@ src/
 
 - **`src/indexing/chunkers.py`** :
   - **Rôle** : Découpage intelligent du texte sous la limite stricte des 2000 caractères.
-  - **Fonctionnement** : Implémente les deux stratégies imposées :
+  - **Fonctionnement** : Implémente deux stratégies principales et des mécanismes de robustesse :
     - *Code Python* (`chunk_python_code`) : Parse l'arbre syntaxique abstrait (AST) de Python pour découper selon les frontières réelles des fonctions et des classes sans casser la logique.
-    - *Markdown / Documentation* (`chunk_markdown_text`) : Découpe hiérarchiquement selon les titres (`#`, `##`), puis les sauts de paragraphe (`\n\n`).
-    - *Secours* (`slice_range_by_lines`) : Si une fonction ou un bloc dépasse 2000 caractères, il est découpé par lignes avec ~150 caractères de chevauchement (*overlap*).
+    - *Markdown / Documentation* (`chunk_markdown_text`) : Découpe hiérarchiquement selon les titres (`#`, `##`), puis les sauts de paragraphe (`\n\n`). Fusionne automatiquement les titres isolés sans corps textuel (*bare headings*) avec la section suivante pour éviter les chunks orphelins et maximiser le Recall.
+    - *Découpage par lignes adaptatif* (`slice_range_by_lines`) : Si une fonction ou un bloc dépasse `max_chunk_size`, il est découpé par lignes avec un chevauchement adaptatif (`min(overlap, max_chunk_size // 4)`) garantissant une progression positive stricte sans boucle infinie.
 
 - **`src/indexing/tokenizer.py`** :
   - **Rôle** : Préparation du texte pour le moteur de recherche lexical.
@@ -107,7 +107,7 @@ src/
 
 - **`src/retrieval/lexical_retriever.py`** :
   - **Rôle** : Moteur de recherche rapide en mémoire.
-  - **Fonctionnement** : Charge l'index BM25 et les métadonnées une seule fois en RAM. Tokenise la requête de l'utilisateur, interroge l'index pour obtenir les $k \times 3$ meilleurs candidats, puis applique une **déduplication spatiale** : si deux extraits proviennent du même fichier et se touchent ou se chevauchent, ils sont fusionnés en un seul (tant que l'union reste $\le 2000$ caractères) pour maximiser la diversité du top-$k$.
+  - **Fonctionnement** : Charge l'index BM25 et les métadonnées une seule fois en RAM. Tokenise la requête de l'utilisateur, interroge l'index pour extraire un pool élargi de candidats (jusqu'à 50 candidats via `fetch_k = min(max(k * 10, 50), len(metadata))`), applique un multiplicateur de score de domaine (`_compute_multiplier`, boost 2.0x pour docs ou code selon le focus), puis applique une **déduplication spatiale** : si deux extraits proviennent du même fichier et se touchent ou se chevauchent, ils sont fusionnés en un seul (tant que l'union reste $\le 2000$ caractères) pour maximiser la diversité du top-$k$.
 
 ---
 
@@ -115,15 +115,17 @@ src/
 
 - **`src/generation/context_builder.py`** :
   - **Rôle** : Reconstruction du texte pour le prompt du LLM.
-  - **Fonctionnement** : Prend la liste des `MinimalSource`, ouvre les fichiers sur le disque, extrait la tranche exacte `texte[first:last]`, et assemble les blocs avec des en-têtes clairs. Utilise le tokenizer du modèle pour garantir que la taille totale ne dépasse pas le budget alloué (2048 tokens).
+  - **Fonctionnement** : Prend la liste des `MinimalSource`, ouvre les fichiers sur le disque (avec cache en mémoire), extrait la tranche exacte `texte[first:last]`, et assemble les blocs avec des en-têtes clairs. Utilise le tokenizer du modèle pour garantir que la taille totale ne dépasse pas le budget alloué (2048 tokens). En cas d'aléa de tokenisation, un repli précis intercepte les erreurs pour estimer les tokens sans interruption.
 
 - **`src/generation/llm_generator.py`** :
-  - **Rôle** : Inférence du modèle de langage local sur CPU.
+  - **Rôle** : Inférence du modèle de langage local optimisée matériellement.
   - **Fonctionnement** :
     - *Lazy Loading* : N'importe `torch` et `transformers` que lorsqu'une réponse est demandée.
-    - Charge `Qwen/Qwen3-0.6B` en précision `float32` sans aucun démon externe.
-    - Désactive le mode thinking (`enable_thinking=False`) pour une réponse directe et rapide sur CPU.
-    - Applique un prompt système de grounding strict demandant de répondre factuellement à partir des extraits fournis.
+    - *Optimisation matérielle & bfloat16* : Détection GPU/MPS avec `device_map="auto"`, `torch_dtype=bfloat16` et repli propre sur CPU en bfloat16 avec faible empreinte mémoire (`low_cpu_mem_usage=True`).
+    - *Mode d'inférence rapide* : Génération en `torch.inference_mode()`, `use_cache=True` et budget limité à 128 nouveaux tokens pour minimiser la latence.
+    - *Gestion flexible des tenseurs* : Transfère proprement les entrées vers `model.device`, compatible à la fois avec `BatchEncoding` Hugging Face et les mocks dictionnaires de tests.
+    - *Nettoyage du raisonnement* : Désactive le thinking dans le template (`enable_thinking=False`) et supprime systématiquement toute balise `<think>...</think>` résiduelle via regex multi-lignes.
+    - *Grounding strict* : Applique un prompt système de grounding strict demandant de répondre factuellement et de manière concise à partir des extraits fournis.
 
 ---
 

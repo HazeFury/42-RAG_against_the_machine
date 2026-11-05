@@ -10,10 +10,10 @@ Le Jour 5 correspond aux étapes 3 et 4 du pipeline RAG :
    - Mise en cache en mémoire des lectures de fichiers (`_file_cache`) pour des performances I/O optimales.
 2. **Génération LLM locale (`src/generation/llm_generator.py`)** :
    - Chargement paresseux (*lazy loading*) du modèle `Qwen/Qwen3-0.6B` et de son tokenizer via `transformers` et `torch`.
-   - Exécution purement CPU en précision `float32` sans dépendance externe (daemon Ollama interdit par le sujet).
+   - Exécution optimisée matériellement (auto-détection CUDA/MPS, `device_map="auto"`, précision `bfloat16`, `low_cpu_mem_usage=True`, repli CPU propre) sans démon externe.
    - Prompt système de grounding strict anti-hallucination.
    - Désactivation du mode *thinking* (`enable_thinking=False` dans le chat template et nettoyage automatique des balises `<think>...</think>`).
-   - Génération déterministe (`do_sample=False`, `max_new_tokens=256`).
+   - Génération déterministe et rapide (`do_sample=False`, `max_new_tokens=128`, `torch.inference_mode()`, `use_cache=True`).
 3. **Intégration Pipeline & CLI (`src/pipeline.py`, `src/cli.py`)** :
    - Commande `answer "<query>" [--k 5]` : recherche, construction du contexte, inférence et affichage des sources avec la réponse.
    - Commande `answer_dataset --student_search_results_path <path> --save_directory <dir>` : génération par lots avec barre de progression `tqdm` et sérialisation conforme au modèle `StudentSearchResultsAndAnswer`.
@@ -36,7 +36,7 @@ Le `ContextBuilder` est responsable de la transformation des métadonnées de r�
   ```
 - **Contrôle du budget de tokens** :
   - Utilise le tokenizer du modèle pour compter les tokens avec exactitude.
-  - Si aucun tokenizer n'est fourni (ex. tests unitaires isolés), utilise une heuristique de repli (~4 caractères / token).
+  - Si le tokenizer rencontre une exception ou n'est pas fourni, un repli propre intercepte les erreurs spécifiques (`TypeError`, `ValueError`, `AttributeError`, `RuntimeError`) et bascule sur l'heuristique (~4 caractères / token).
   - Empile les snippets dans l'ordre de pertinence (`top-1`, `top-2`, ...) tant que `accumulated_tokens + block_tokens <= max_context_tokens`.
   - Si même le premier extrait dépasse le budget, il est tronqué au niveau des caractères pour respecter la limite maximale autorisée.
 
@@ -44,7 +44,8 @@ Le `ContextBuilder` est responsable de la transformation des métadonnées de r�
 
 Le `LLMGenerator` encapsule l'inférence locale :
 - **Chargement Paresseux (*Lazy Loading*)** : Les modules `torch` et `transformers`, ainsi que les poids du modèle (~1,2 Go), ne sont jamais importés ni initialisés lors de l'import du module ou lors de l'exécution des commandes d'indexation, de recherche ou d'évaluation (`index`, `search`, `search_dataset`, `evaluate`). Le démarrage de ces commandes reste donc instantané.
-- **Support Hors-Ligne & Robustesse** : Tente en priorité le chargement depuis le cache local (`local_files_only=True`), évitant tout blocage réseau en environnement sandboxé ou déconnecté.
+- **Accélération Matérielle & `bfloat16`** : Détecte dynamiquement la présence de matériel accéléré (`CUDA` ou `MPS`) pour configurer `torch_dtype` et `device_map="auto"` avec `low_cpu_mem_usage=True`. En cas d'exécution sur CPU, charge les poids en `torch.bfloat16` pour diviser par deux la consommation mémoire et accélérer l'inférence.
+- **Support Hors-Ligne & Robustesse** : Tente en priorité le chargement depuis le cache local, évitant tout blocage réseau en environnement sandboxé ou déconnecté.
 - **Prompt Système Anti-Hallucination** :
   ```text
   You are a precise technical assistant for the vLLM codebase.
@@ -52,9 +53,14 @@ Le `LLMGenerator` encapsule l'inférence locale :
   Do not extrapolate or hallucinate. If the context does not contain sufficient information to answer the question, state:
   "The provided context does not contain sufficient information to answer this question."
   ```
+- **Inférence Rapide & Déterministe** :
+  - `torch.inference_mode()` désactive la gestion du graphe d'autodiff.
+  - `use_cache=True` réutilise le cache KV.
+  - `max_new_tokens=128` garantit une réponse concise et évite toute dérive de latence.
+- **Gestion Polyvalente des Tenseurs d'Entrée** : Le transfert vers `self._model.device` s'adapte dynamiquement aussi bien aux instances `BatchEncoding` de Hugging Face qu'aux structures dictionnaires utilisées dans les suites de tests unitaires.
 - **Suppression du Reasoning Verbose** :
   - `enable_thinking=False` pré-remplit `<think>\n\n</think>` dans le template Qwen3 pour que l'inférence commence directement sur la réponse finale.
-  - Une passe regex `re.sub(r"<think>.*?</think>", "", ...)` élimine tout bloc résiduel.
+  - Une passe regex `re.sub(r"<think>.*?</think>", "", ..., flags=re.DOTALL)` élimine tout bloc résiduel.
 
 ### 2.3. Pipeline & Commandes CLI
 
@@ -91,7 +97,8 @@ tests/test_tokenizer.py ........                                         [100%]
 ============================== 53 passed in 1.11s ==============================
 ```
 
-### 3.2. Qualité de Code & Typage Stricte
-- **`flake8 src tests`** : 0 avertissement, 0 erreur (respect strict de PEP 8 et limite de 79 caractères par ligne).
-- **`mypy src tests --strict`** : 0 erreur sur l'ensemble des 29 fichiers sources du projet.
+### 3.2. Qualité de Code, Typage & Linter
+- **`ruff check .`** : 0 erreur (vérification des règles strictes `E, W, F, I, B, BLE, S, SIM, RUF`).
+- **`flake8 .`** : 0 avertissement, 0 erreur (respect strict du PEP 8 et limite de 79 caractères par ligne).
+- **`mypy . --strict`** : 0 erreur sur l'ensemble des 29 fichiers sources du projet.
 

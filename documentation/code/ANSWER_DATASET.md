@@ -107,4 +107,5 @@ Le fichier JSON final produit a la structure suivante :
    - Ce découpage permet à l'évaluateur de vérifier immédiatement la qualité de la recherche (Recall@5) sans devoir attendre toute la génération de texte.
 2. **Gestion de la RAM** : Le modèle est chargé une seule fois au début de la boucle et réutilisé pour chaque question, évitant les fuites mémoires ou les temps de rechargement.
 3. **Le cache de fichier dans `ContextBuilder`** : Quand plusieurs questions ou plusieurs chunks renvoient au même gros fichier source, `ContextBuilder._file_cache` conserve le texte en mémoire au lieu de relire le disque à chaque fois.
+4. **Optimisation du débit de génération** : Grâce au chargement en `bfloat16`, à l'exécution en `torch.inference_mode()`, au cache KV (`use_cache=True`) et au plafonnement à `max_new_tokens=128`, la durée totale de génération sur le dataset est minimisée tout en produisant des réponses directes et sans verbiage.
 
