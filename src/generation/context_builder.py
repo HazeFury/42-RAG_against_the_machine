@@ -49,8 +49,8 @@ class ContextBuilder:
             try:
                 tokens = self.tokenizer.encode(text, add_special_tokens=False)
                 return len(tokens)
-            except Exception:
-                pass
+            except (TypeError, ValueError, AttributeError, RuntimeError):
+                return max(1, len(text) // 4)
         return max(1, len(text) // 4)
 
     def _read_file_content(self, file_path_str: str) -> str | None:

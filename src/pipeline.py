@@ -3,6 +3,7 @@
 import uuid
 from pathlib import Path
 
+from pydantic import ValidationError
 from tqdm import tqdm
 
 from src.evaluation.evaluator import (
@@ -156,7 +157,7 @@ class RagPipeline:
 
         try:
             dataset = RagDataset.model_validate(raw_data)
-        except Exception:
+        except (ValidationError, ValueError, TypeError, KeyError):
             return None
 
         retriever = self._get_retriever(index_dir=index_dir)
@@ -269,7 +270,7 @@ class RagPipeline:
 
         try:
             student_results = StudentSearchResults.model_validate(raw_data)
-        except Exception:
+        except (ValidationError, ValueError, TypeError, KeyError):
             return None
 
         generator = self._get_generator(model_name=model_name)
@@ -327,7 +328,7 @@ class RagPipeline:
 
         try:
             student_res = StudentSearchResults.model_validate(res_data)
-        except Exception:
+        except (ValidationError, ValueError, TypeError, KeyError):
             return None
 
         scores = evaluate_files(student_search_results_path, dataset_path)

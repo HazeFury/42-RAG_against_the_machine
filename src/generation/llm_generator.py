@@ -63,12 +63,15 @@ class LLMGenerator:
                 device_map="auto",
                 low_cpu_mem_usage=True,
             )
-        except Exception:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            self._model = AutoModelForCausalLM.from_pretrained(
+        except (ValueError, OSError, RuntimeError, TypeError):
+            device_target = torch.device(
+                "cuda" if torch.cuda.is_available() else "cpu"
+            )
+            fallback_model: Any = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
                 torch_dtype=torch.bfloat16,
-            ).to(device)
+            )
+            self._model = fallback_model.to(device_target)
 
         self._model.eval()
 
@@ -134,9 +137,27 @@ class LLMGenerator:
         import torch
 
         prompt = self.format_prompt(question=question, context=context)
-        inputs = self._tokenizer(prompt, return_tensors="pt").to(
-            self._model.device
-        )
+        raw_inputs = self._tokenizer(prompt, return_tensors="pt")
+        device = getattr(self._model, "device", None)
+        inputs: Any
+        if hasattr(raw_inputs, "to"):
+            try:
+                inputs = raw_inputs.to(device)
+            except (TypeError, ValueError, AttributeError):
+                inputs = raw_inputs
+        elif isinstance(raw_inputs, dict):
+            inputs = {}
+            for k, v in raw_inputs.items():
+                if hasattr(v, "to") and device is not None:
+                    try:
+                        inputs[k] = v.to(device)
+                    except (TypeError, ValueError, AttributeError):
+                        inputs[k] = v
+                else:
+                    inputs[k] = v
+        else:
+            inputs = raw_inputs
+
         prompt_len = inputs["input_ids"].shape[1]
 
         with torch.inference_mode():

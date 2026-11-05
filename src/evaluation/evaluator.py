@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from src.config import DEFAULT_IOU_THRESHOLD, EVALUATION_K_VALUES
 from src.models import (
     AnsweredQuestion,
@@ -138,10 +140,8 @@ def evaluate_dataset(
     # Extract answered questions with non-empty ground-truth sources
     answered_questions: list[Any] = []
     for q in ground_truth.rag_questions:
-        if (
-            isinstance(q, AnsweredQuestion)
-            or isinstance(q, dict)
-            and q.get("sources")
+        if isinstance(q, AnsweredQuestion) or (
+            isinstance(q, dict) and bool(q.get("sources"))
         ):
             answered_questions.append(q)
 
@@ -247,7 +247,7 @@ def evaluate_files(
     try:
         student_results = StudentSearchResults.model_validate(res_data)
         ground_truth = RagDataset.model_validate(gt_data)
-    except Exception:
+    except (ValidationError, ValueError, TypeError, KeyError):
         return None
 
     return evaluate_dataset(

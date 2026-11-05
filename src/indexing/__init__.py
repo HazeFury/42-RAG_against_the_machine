@@ -19,15 +19,15 @@ from src.indexing.tokenizer import (
 )
 
 __all__ = [
+    "chunk_file",
+    "chunk_markdown_text",
+    "chunk_plain_text",
+    "chunk_python_code",
     "discover_corpus_files",
+    "extract_path_tokens",
     "is_indexable_file",
     "load_corpus",
     "read_file_safely",
-    "chunk_file",
-    "chunk_python_code",
-    "chunk_markdown_text",
-    "chunk_plain_text",
     "split_identifier",
-    "extract_path_tokens",
     "tokenize",
 ]

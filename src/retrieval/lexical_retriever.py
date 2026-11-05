@@ -98,22 +98,13 @@ class LexicalRetriever:
         raw_scores = [float(s) for s in scores[0]]
 
         if doc_type:
-            scored = []
-            for cand, sc in zip(candidates, raw_scores):
-                fp = cand["file_path"]
-                multiplier = 1.0
-                if doc_type == "docs":
-                    if "/docs/" in fp or fp.endswith(
-                        (".md", ".rst", "CMakeLists.txt", "setup.py")
-                    ):
-                        multiplier = 2.0
-                elif (
-                    doc_type == "code"
-                    and "/vllm/" in fp
-                    or fp.endswith((".py", ".c", ".cu", ".cpp", ".h"))
-                ):
-                    multiplier = 2.0
-                scored.append((sc * multiplier, cand))
+            scored = [
+                (
+                    sc * self._compute_multiplier(cand["file_path"], doc_type),
+                    cand,
+                )
+                for cand, sc in zip(candidates, raw_scores)
+            ]
             scored.sort(key=lambda x: x[0], reverse=True)
             candidates = [c for _, c in scored]
 
@@ -180,21 +171,16 @@ class LexicalRetriever:
             raw_scores = [float(s) for s in scores[0]]
 
             if doc_type:
-                scored = []
-                for cand, sc in zip(candidates, raw_scores):
-                    fp = cand["file_path"]
-                    multiplier = 1.0
-                    if doc_type == "docs":
-                        if "/docs/" in fp or fp.endswith(
-                            (".md", ".rst", "CMakeLists.txt", "setup.py")
-                        ):
-                            multiplier = 2.0
-                    elif doc_type == "code":
-                        if "/vllm/" in fp or fp.endswith(
-                            (".py", ".c", ".cu", ".cpp", ".h")
-                        ):
-                            multiplier = 2.0
-                    scored.append((sc * multiplier, cand))
+                scored = [
+                    (
+                        sc
+                        * self._compute_multiplier(
+                            cand["file_path"], doc_type
+                        ),
+                        cand,
+                    )
+                    for cand, sc in zip(candidates, raw_scores)
+                ]
                 scored.sort(key=lambda x: x[0], reverse=True)
                 candidates = [c for _, c in scored]
 
@@ -202,6 +188,22 @@ class LexicalRetriever:
             batch_results.append(sources)
 
         return batch_results
+
+    @staticmethod
+    def _compute_multiplier(fp: str, doc_type: str | None) -> float:
+        """Compute score multiplier based on domain focus and file type."""
+        if not doc_type:
+            return 1.0
+        is_doc = doc_type == "docs" and (
+            "/docs/" in fp
+            or fp.endswith((".md", ".rst", "CMakeLists.txt", "setup.py"))
+        )
+        is_code = doc_type == "code" and (
+            "/vllm/" in fp or fp.endswith((".py", ".c", ".cu", ".cpp", ".h"))
+        )
+        if is_doc or is_code:
+            return 2.0
+        return 1.0
 
     def _deduplicate_and_merge(
         self,
