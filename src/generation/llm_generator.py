@@ -24,7 +24,7 @@ class LLMGenerator:
     def __init__(
         self,
         model_name: str = "Qwen/Qwen3-0.6B",
-        max_new_tokens: int = 128,
+        max_new_tokens: int = 256,
     ) -> None:
         """Initialize the LLMGenerator without loading weights.
 

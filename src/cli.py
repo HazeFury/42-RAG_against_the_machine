@@ -1,5 +1,6 @@
 """Command-Line Interface for the RAG system using Python Fire."""
 
+import re
 import sys
 from pathlib import Path
 
@@ -77,7 +78,19 @@ class RAGCLI:
                 print("No search query provided. Returning 0 results.")
                 return
 
-            if len(query.strip().split()) < 3:
+            words = [
+                w
+                for w in re.findall(r"[a-zA-Z0-9_]+", query)
+                if re.search(r"[a-zA-Z]", w)
+            ]
+            if not words:
+                print(
+                    "Query contains only special characters or symbols. "
+                    "Returning 0 results."
+                )
+                return
+
+            if len(words) < 3:
                 print("Less than 3 words provided. Returning 0 results.")
                 return
 
@@ -168,7 +181,19 @@ class RAGCLI:
                 print("No query provided.")
                 return
 
-            if len(query.strip().split()) < 3:
+            words = [
+                w
+                for w in re.findall(r"[a-zA-Z0-9_]+", query)
+                if re.search(r"[a-zA-Z]", w)
+            ]
+            if not words:
+                print(
+                    "Query contains only special characters or symbols. "
+                    "Returning 0 results."
+                )
+                return
+
+            if len(words) < 3:
                 print("Less than 3 words provided. Returning 0 results.")
                 return
 

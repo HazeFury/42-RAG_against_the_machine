@@ -38,7 +38,7 @@ data/raw/vllm-0.10.1/vllm/attention/ops/rocm_aiter_paged_attn.py [350:394]
    │  Fire dispatche vers RAGCLI.search()
    ▼
 2. src/cli.py: RAGCLI.search()
-   │  - Vérifie que la query n'est pas vide et que k > 0
+   │  - Vérifie que la query n'est pas vide, contient au moins une lettre et >= 3 mots signifiants, et que k > 0
    │  - Vérifie que le dossier index_dir existe bien
    │  - Appelle self.pipeline.search(query, k, index_dir)
    │  - Affiche les résultats reçus ligne par ligne : "file_path [first:last]"

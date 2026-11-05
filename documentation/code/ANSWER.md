@@ -45,7 +45,7 @@ The fused batched MoE layer returns the activation formats `mk.FusedMoEActivatio
    │  Fire dispatche vers RAGCLI.answer()
    ▼
 2. src/cli.py: RAGCLI.answer()
-   │  - Vérifie que query n'est pas vide et k > 0
+   │  - Vérifie que query n'est pas vide, contient au moins une lettre et >= 3 mots signifiants, et que k > 0
    │  - Appelle self.pipeline.answer(query, k, index_dir, model_name)
    │  - Reçoit l'objet MinimalAnswer
    │  - Formate et affiche proprement les sources et la réponse dans le terminal
