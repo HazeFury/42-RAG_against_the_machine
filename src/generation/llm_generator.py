@@ -1,7 +1,6 @@
 """Local LLM inference generator using Qwen/Qwen3-0.6B.
 
-Implements lazy loading to prevent memory and runtime overhead during
-purely lexical search or indexing workflows.
+Implements lazy loading and hardware-aware execution to minimize latency.
 """
 
 import os
@@ -25,92 +24,64 @@ class LLMGenerator:
     def __init__(
         self,
         model_name: str = "Qwen/Qwen3-0.6B",
-        device: str = "cpu",
-        max_new_tokens: int = 256,
+        max_new_tokens: int = 128,
     ) -> None:
         """Initialize the LLMGenerator without loading weights.
 
         Args:
             model_name: Hugging Face model repository or local path.
-            device: Computing device ('cpu').
             max_new_tokens: Maximum tokens to generate per answer.
         """
         self.model_name = model_name
-        self.device = device
         self.max_new_tokens = max_new_tokens
         self._tokenizer: Any | None = None
         self._model: Any | None = None
 
     def load_model(self) -> None:
-        """Load tokenizer and model on demand if not already loaded."""
+        """Load tokenizer and model on demand with optimal dtype and device."""
         if self._model is not None and self._tokenizer is not None:
             return
 
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
-        # Set offline env if local cache is preferred
         os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-        # Load tokenizer with offline preference fallback
-        tokenizer: Any
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+
+        has_gpu = torch.cuda.is_available() or (
+            hasattr(torch.backends, "mps")
+            and torch.backends.mps.is_available()
+        )
+        target_dtype = torch.bfloat16 if not has_gpu else "auto"
+
         try:
-            tokenizer = AutoTokenizer.from_pretrained(
+            self._model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
-                local_files_only=True,
+                torch_dtype=target_dtype,
+                device_map="auto",
+                low_cpu_mem_usage=True,
             )
         except Exception:
-            tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-
-        # Load model on CPU with float32 precision
-        model: Any
-        try:
-            model = AutoModelForCausalLM.from_pretrained(
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            self._model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
-                dtype=torch.float32,
-                local_files_only=True,
-            )
-        except TypeError:
-            # Fallback for transformers versions expecting torch_dtype
-            model = AutoModelForCausalLM.from_pretrained(
-                self.model_name,
-                torch_dtype=torch.float32,
-                local_files_only=True,
-            )
-        except Exception:
-            model = AutoModelForCausalLM.from_pretrained(
-                self.model_name,
-                torch_dtype=torch.float32,
-            )
+                torch_dtype=torch.bfloat16,
+            ).to(device)
 
-        model.to(self.device)
-        model.eval()
-
-        self._tokenizer = tokenizer
-        self._model = model
+        self._model.eval()
 
     def get_tokenizer(self) -> Any:
-        """Return the tokenizer, loading it if necessary.
-
-        Returns:
-            The loaded Hugging Face tokenizer.
-        """
+        """Return the loaded tokenizer, initializing it if needed."""
         if self._tokenizer is None:
             from transformers import AutoTokenizer
 
-            try:
-                self._tokenizer = AutoTokenizer.from_pretrained(
-                    self.model_name,
-                    local_files_only=True,
-                )
-            except Exception:
-                self._tokenizer = AutoTokenizer.from_pretrained(
-                    self.model_name
-                )
+            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         return self._tokenizer
 
     def format_prompt(self, question: str, context: str) -> str:
-        """Format question and context into chat template.
+        """Format question and context into the model chat template.
 
         Args:
             question: User question string.
@@ -120,7 +91,6 @@ class LLMGenerator:
             Formatted prompt string ready for tokenization.
         """
         tokenizer = self.get_tokenizer()
-
         clean_context = context.strip() if context else "No context available."
         user_content = (
             f"Context:\n{clean_context}\n\nQuestion:\n{question.strip()}"
@@ -164,16 +134,18 @@ class LLMGenerator:
         import torch
 
         prompt = self.format_prompt(question=question, context=context)
-        inputs = self._tokenizer(prompt, return_tensors="pt")
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
+        inputs = self._tokenizer(prompt, return_tensors="pt").to(
+            self._model.device
+        )
         prompt_len = inputs["input_ids"].shape[1]
 
-        with torch.no_grad():
+        with torch.inference_mode():
             outputs = self._model.generate(
                 **inputs,
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
+                use_cache=True,
+                pad_token_id=self._tokenizer.eos_token_id,
             )
 
         gen_tokens = outputs[0][prompt_len:]
@@ -182,12 +154,9 @@ class LLMGenerator:
             skip_special_tokens=True,
         )
 
-        # Strip any stray thinking tags from output
-        cleaned_answer = re.sub(
+        return re.sub(
             r"<think>.*?</think>",
             "",
             raw_answer,
             flags=re.DOTALL,
         ).strip()
-
-        return cleaned_answer
