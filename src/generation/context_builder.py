@@ -54,7 +54,14 @@ class ContextBuilder:
         return max(1, len(text) // 4)
 
     def _read_file_content(self, file_path_str: str) -> str | None:
-        """Read and cache file content with encoding error tolerance."""
+        """Read and cache file content with encoding error tolerance.
+
+        Args:
+            file_path_str: Path string to the file.
+
+        Returns:
+            Decoded file content or None if file cannot be read.
+        """
         if file_path_str in self._file_cache:
             return self._file_cache[file_path_str]
 
@@ -73,7 +80,14 @@ class ContextBuilder:
             return None
 
     def extract_snippet(self, source: MinimalSource) -> str | None:
-        """Extract the exact character range text for a MinimalSource."""
+        """Extract the exact character range text for a MinimalSource.
+
+        Args:
+            source: Source specification containing file path and char bounds.
+
+        Returns:
+            The raw text snippet, or None if reading fails or bounds invalid.
+        """
         content = self._read_file_content(source.file_path)
         if content is None:
             return None
