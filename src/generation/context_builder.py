@@ -16,7 +16,7 @@ class ContextBuilder:
     def __init__(
         self,
         max_context_tokens: int = 1024,
-        max_sources: int = 4,
+        max_sources: int = 5,
         tokenizer: Any | None = None,
         base_dir: str | Path | None = None,
     ) -> None:

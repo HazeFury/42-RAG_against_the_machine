@@ -8,12 +8,13 @@ import re
 from typing import Any
 
 SYSTEM_PROMPT = (
-    "You are a precise technical assistant for the vLLM codebase. "
-    "Answer the question concisely and directly using ONLY the provided "
-    "context snippets. Mention exact identifiers, classes, or return values "
-    "when present. If the answer cannot be deduced at all from the context, "
-    'reply: "The provided context does not contain sufficient information '
-    'to answer this question."'
+    "You are a precise technical assistant for the vLLM codebase.\n"
+    "Answer the user's question concisely, accurately, and strictly grounded "
+    "in the provided context.\n"
+    "Do not extrapolate or hallucinate. If the context does not contain "
+    "sufficient information to answer the question, state:\n"
+    '"The provided context does not contain sufficient information to '
+    'answer this question."'
 )
 
 
