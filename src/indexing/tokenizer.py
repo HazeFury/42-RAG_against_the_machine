@@ -4,9 +4,8 @@ Implements identifier splitting for snake_case and camelCase,
 path token injection, and technical keyword preservation.
 """
 
-from pathlib import Path
 import re
-from typing import Optional
+from pathlib import Path
 
 # Standard English conversational stopwords to filter out
 STOPWORDS: set[str] = {
@@ -202,9 +201,7 @@ IGNORED_PATH_PARTS: set[str] = {
 }
 
 # Regex to detect camelCase / PascalCase word boundaries
-CAMEL_PATTERN = re.compile(
-    r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+"
-)
+CAMEL_PATTERN = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
 
 
 def split_identifier(token: str) -> list[str]:
@@ -297,7 +294,7 @@ def extract_path_tokens(file_path: str | Path) -> list[str]:
 
 def tokenize(
     text: str,
-    file_path: Optional[str | Path] = None,
+    file_path: str | Path | None = None,
     path_weight: int = 2,
 ) -> list[str]:
     """Tokenize text into BM25-ready tokens with optional path injection.

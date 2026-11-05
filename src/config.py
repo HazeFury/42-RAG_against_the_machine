@@ -3,6 +3,8 @@
 from pathlib import Path
 
 # Character limits
+MIN_MAX_CHUNK_SIZE: int = 400
+MAX_MAX_CHUNK_SIZE: int = 2000
 DEFAULT_MAX_CHUNK_SIZE: int = 2000
 
 # Retrieval defaults

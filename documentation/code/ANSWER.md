@@ -5,7 +5,7 @@
 La commande `answer` exécute le **pipeline RAG complet de bout en bout pour une seule question** :
 1. Elle **cherche** les $k$ meilleurs morceaux de code/doc avec le retriever lexical.
 2. Elle **extrait** le texte exact de ces morceaux directement dans les fichiers sur le disque pour construire le contexte (sans dépasser la limite de 2048 tokens).
-3. Elle charge le modèle local **`Qwen/Qwen3-0.6B`** sur le processeur (CPU) et génère une réponse technique directe, factuelle et sourcée.
+3. Elle charge le modèle local **`Qwen/Qwen3-0.6B`** de façon optimisée matériellement (`bfloat16`, auto-détection GPU/MPS avec repli propre sur CPU) et génère une réponse technique directe, factuelle et sourcée.
 4. Elle affiche dans le terminal la question, la liste des sources utilisées avec leurs coordonnées, et la réponse rédigée.
 
 ---
@@ -45,7 +45,7 @@ The fused batched MoE layer returns the activation formats `mk.FusedMoEActivatio
    │  Fire dispatche vers RAGCLI.answer()
    ▼
 2. src/cli.py: RAGCLI.answer()
-   │  - Vérifie que query n'est pas vide et k > 0
+   │  - Vérifie que query n'est pas vide, contient au moins une lettre et >= 3 mots signifiants, et que k > 0
    │  - Appelle self.pipeline.answer(query, k, index_dir, model_name)
    │  - Reçoit l'objet MinimalAnswer
    │  - Formate et affiche proprement les sources et la réponse dans le terminal
@@ -68,19 +68,23 @@ The fused batched MoE layer returns the activation formats `mk.FusedMoEActivatio
    │    -> Lit le fichier avec encoding="utf-8", errors="ignore" (utilise un cache _file_cache)
    │    -> Extrait la tranche exacte : content[first:last]
    │    -> Formate l'en-tête : "--- Source: file_path [chars first:last] ---\n<texte>"
-   │    -> Compte les tokens avec le tokenizer de Qwen
+   │    -> Compte les tokens avec le tokenizer de Qwen (avec repli robuste en cas d'erreur)
    │    -> Empile les blocs tant que total_tokens <= 2048 (max_context_tokens)
    ▼
 5. src/generation/llm_generator.py: LLMGenerator.generate_answer()
    │  - load_model() :
    │    -> Importe torch et transformers UNIQUEMENT ici (Lazy Loading)
-   │    -> Charge Qwen/Qwen3-0.6B en float32 sur CPU (local_files_only=True)
+   │    -> Détecte l'accélération matérielle (CUDA, MPS ou CPU)
+   │    -> Charge Qwen/Qwen3-0.6B en bfloat16 avec device_map="auto" et low_cpu_mem_usage=True
+   │    -> Repli défensif sur CPU en bfloat16 en cas de contrainte environnementale
    │  - format_prompt() :
-   │    -> Construit les messages avec le prompt système de grounding
+   │    -> Construit les messages avec le prompt système strict de grounding
    │    -> Applique le chat template : tokenizer.apply_chat_template(messages, enable_thinking=False)
    │  - Inférence :
-   │    -> model.generate(**inputs, max_new_tokens=256, do_sample=False)
-   │    -> Décodage du texte et nettoyage d'éventuelles balises <think> résiduelles
+   │    -> Transfère proprement les tenseurs d'entrée sur model.device (compatible BatchEncoding & mocks)
+   │    -> Inférence accélérée : with torch.inference_mode():
+   │    -> model.generate(**inputs, max_new_tokens=128, do_sample=False, use_cache=True)
+   │    -> Décodage du texte et nettoyage d'éventuelles balises <think>...</think> résiduelles via regex
    │    -> Renvoie la chaîne de caractères finale
 ```
 
@@ -88,8 +92,9 @@ The fused batched MoE layer returns the activation formats `mk.FusedMoEActivatio
 
 ## 4. Les points clés à expliquer à l'oral
 
-1. **Le Lazy Loading (crucial)** : Le modèle de 600M de paramètres pèse ~1,2 Go. Si on importait `torch` et `transformers` au début du fichier `cli.py`, même un simple `search` ou `index` mettrait 4 secondes à démarrer et consommerait 1,5 Go de RAM. Grâce au lazy loading, `torch` n'est importé que si on tape `answer` ou `answer_dataset`.
-2. **Pas d'Ollama, inférence CPU pure** : Le sujet interdit formellement les démons externes type Ollama car l'environnement de correction ne fait qu'un `uv sync`. Tout tourne en PyTorch CPU natif.
-3. **Le prompt système et le biais de refus** : Initialement, les petits modèles refusent de répondre si on leur dit trop fermement *"ne pas extrapoler"* alors que la réponse est dans le code sans répéter la question mot pour mot. Nous avons calibré le prompt système pour lui indiquer de chercher dans les fonctions, classes et noms de fichiers.
-4. **`enable_thinking=False`** : Qwen3 possède un mode "thinking" (chaîne de pensée). L'activer sur CPU ferait générer 500 tokens de réflexion lente inutile. En le désactivant, il répond instantanément et directement.
+1. **Le Lazy Loading (crucial)** : Le modèle de 600M de paramètres pèse ~1,2 Go. Si on importait `torch` et `transformers` au début du fichier `cli.py`, même un simple `search` ou `index` mettrait plusieurs secondes à démarrer et consommerait inutilement de la RAM. Grâce au lazy loading, `torch` n'est importé que si on tape `answer` ou `answer_dataset`.
+2. **Exécution optimisée en `bfloat16` & Hardware-Aware** : Le code détecte automatiquement la présence d'un GPU/MPS ou bascule sur CPU, en chargeant les poids en précision `bfloat16` avec `device_map="auto"` et `low_cpu_mem_usage=True`. Cela divise par deux la mémoire requise par rapport au `float32` sans aucune dégradation de qualité.
+3. **Pas d'Ollama, inférence Python pure** : Le sujet interdit formellement les démons externes type Ollama car l'environnement de correction 42 ne fait qu'un `uv sync`. Tout tourne avec `transformers` et `torch` en local.
+4. **Vitesse d'inférence (`torch.inference_mode()` & `max_new_tokens=128`)** : L'utilisation de `inference_mode()` désactive la construction du graphe d'autodiff, et limiter la génération à 128 nouveaux tokens garantit des réponses concises, rapides et directes.
+5. **Désactivation du mode thinking (`enable_thinking=False`)** : Qwen3 possède par défaut un mode "thinking" (chaîne de pensée). L'activer sur CPU ferait générer des centaines de tokens de réflexion lente inutile. En le désactivant et en filtrant les balises `<think>`, le modèle répond directement au fait.
 

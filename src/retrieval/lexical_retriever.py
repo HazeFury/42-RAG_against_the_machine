@@ -1,8 +1,9 @@
 """Lexical retrieval engine based on BM25 and spatial deduplication."""
 
 import json
+import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import bm25s
 from tqdm import tqdm
@@ -28,7 +29,7 @@ class LexicalRetriever:
         """
         self.index_dir = Path(index_dir)
         self.max_chunk_size = max_chunk_size
-        self._retriever: Optional[bm25s.BM25] = None
+        self._retriever: bm25s.BM25 | None = None
         self._metadata: list[dict[str, Any]] = []
         self._load()
 
@@ -63,12 +64,14 @@ class LexicalRetriever:
         self,
         query: str,
         k: int = 5,
+        doc_type: str | None = None,
     ) -> list[MinimalSource]:
         """Retrieve top-k most relevant sources for a single question.
 
         Args:
             query: Question or keywords string.
             k: Number of sources to retrieve.
+            doc_type: Optional domain focus ('docs' or 'code').
 
         Returns:
             List of MinimalSource objects ranked by relevance.
@@ -77,7 +80,7 @@ class LexicalRetriever:
             return []
 
         clean_query = query.strip()
-        if not clean_query:
+        if not clean_query or not re.search(r"[a-zA-Z]", clean_query):
             return []
 
         q_tokens = tokenize(clean_query)
@@ -85,15 +88,26 @@ class LexicalRetriever:
             return []
 
         # Retrieve extra candidates for spatial deduplication and merging
-        fetch_k = min(max(k * 3, 10), len(self._metadata))
-        doc_indices, _ = self._retriever.retrieve(
+        fetch_k = min(max(k * 10, 50), len(self._metadata))
+        doc_indices, scores = self._retriever.retrieve(
             [q_tokens],
             k=fetch_k,
             show_progress=False,
         )
 
-        candidate_indices: list[int] = [int(idx) for idx in doc_indices[0]]
-        candidates = [self._metadata[idx] for idx in candidate_indices]
+        candidates = [self._metadata[int(idx)] for idx in doc_indices[0]]
+        raw_scores = [float(s) for s in scores[0]]
+
+        if doc_type:
+            scored = [
+                (
+                    sc * self._compute_multiplier(cand["file_path"], doc_type),
+                    cand,
+                )
+                for cand, sc in zip(candidates, raw_scores)
+            ]
+            scored.sort(key=lambda x: x[0], reverse=True)
+            candidates = [c for _, c in scored]
 
         return self._deduplicate_and_merge(candidates=candidates, k=k)
 
@@ -102,6 +116,7 @@ class LexicalRetriever:
         queries: list[str],
         k: int = 10,
         show_progress: bool = True,
+        doc_type: str | None = None,
     ) -> list[list[MinimalSource]]:
         """Retrieve top-k sources for a batch of questions.
 
@@ -109,6 +124,7 @@ class LexicalRetriever:
             queries: List of question strings.
             k: Number of sources per question.
             show_progress: Whether to show tqdm progress bar.
+            doc_type: Optional domain focus ('docs' or 'code').
 
         Returns:
             List of lists of MinimalSource objects.
@@ -123,16 +139,17 @@ class LexicalRetriever:
         valid_query_mask: list[bool] = []
 
         for q in queries:
-            if not q.strip():
+            clean_q = q.strip()
+            if not clean_q or not re.search(r"[a-zA-Z]", clean_q):
                 tokenized_batch.append([])
                 valid_query_mask.append(False)
             else:
-                toks = tokenize(q.strip())
+                toks = tokenize(clean_q)
                 tokenized_batch.append(toks)
                 valid_query_mask.append(len(toks) > 0)
 
         # Retrieve valid queries in batch
-        fetch_k = min(max(k * 3, 10), len(self._metadata))
+        fetch_k = min(max(k * 10, 50), len(self._metadata))
         batch_results: list[list[MinimalSource]] = []
 
         q_iter = tqdm(
@@ -147,17 +164,48 @@ class LexicalRetriever:
                 continue
 
             q_tokens = tokenized_batch[i]
-            doc_indices, _ = self._retriever.retrieve(
+            doc_indices, scores = self._retriever.retrieve(
                 [q_tokens],
                 k=fetch_k,
                 show_progress=False,
             )
-            candidate_indices = [int(idx) for idx in doc_indices[0]]
-            candidates = [self._metadata[idx] for idx in candidate_indices]
+            candidates = [self._metadata[int(idx)] for idx in doc_indices[0]]
+            raw_scores = [float(s) for s in scores[0]]
+
+            if doc_type:
+                scored = [
+                    (
+                        sc
+                        * self._compute_multiplier(
+                            cand["file_path"], doc_type
+                        ),
+                        cand,
+                    )
+                    for cand, sc in zip(candidates, raw_scores)
+                ]
+                scored.sort(key=lambda x: x[0], reverse=True)
+                candidates = [c for _, c in scored]
+
             sources = self._deduplicate_and_merge(candidates=candidates, k=k)
             batch_results.append(sources)
 
         return batch_results
+
+    @staticmethod
+    def _compute_multiplier(fp: str, doc_type: str | None) -> float:
+        """Compute score multiplier based on domain focus and file type."""
+        if not doc_type:
+            return 1.0
+        is_doc = doc_type == "docs" and (
+            "/docs/" in fp
+            or fp.endswith((".md", ".rst", "CMakeLists.txt", "setup.py"))
+        )
+        is_code = doc_type == "code" and (
+            "/vllm/" in fp or fp.endswith((".py", ".c", ".cu", ".cpp", ".h"))
+        )
+        if is_doc or is_code:
+            return 2.0
+        return 1.0
 
     def _deduplicate_and_merge(
         self,
@@ -174,6 +222,7 @@ class LexicalRetriever:
             List of MinimalSource models <= k.
         """
         accepted: list[dict[str, Any]] = []
+        effective_max = min(self.max_chunk_size, 2000)
 
         for cand in candidates:
             cand_fp = cand["file_path"]
@@ -186,22 +235,29 @@ class LexicalRetriever:
                     ex_start = existing["first_character_index"]
                     ex_end = existing["last_character_index"]
 
-                    # Check for overlap between existing and candidate
+                    # Check overlap and adjacency
                     overlap = max(
                         0,
                         min(ex_end, cand_end) - max(ex_start, cand_start),
                     )
-                    if overlap > 0:
-                        union_start = min(ex_start, cand_start)
-                        union_end = max(ex_end, cand_end)
+                    gap = max(
+                        0,
+                        max(ex_start, cand_start) - min(ex_end, cand_end),
+                    )
+                    union_start = min(ex_start, cand_start)
+                    union_end = max(ex_end, cand_end)
 
-                        # Merge if combined span respects 2000 character limit
-                        if union_end - union_start <= self.max_chunk_size:
+                    if overlap > 0 or gap <= 60:
+                        # Merge if combined span respects character limit
+                        if union_end - union_start <= effective_max:
                             existing["first_character_index"] = union_start
                             existing["last_character_index"] = union_end
-                        # Either merged or skipped as redundant overlap
-                        matched = True
-                        break
+                            matched = True
+                            break
+                        elif overlap > 300:
+                            # Substantially overlapping; skip duplicate
+                            matched = True
+                            break
 
             if not matched:
                 accepted.append(
@@ -220,8 +276,8 @@ class LexicalRetriever:
         for item in accepted[:k]:
             start = item["first_character_index"]
             end = item["last_character_index"]
-            if end - start > self.max_chunk_size:
-                end = start + self.max_chunk_size
+            if end - start > effective_max:
+                end = start + effective_max
 
             results.append(
                 MinimalSource(

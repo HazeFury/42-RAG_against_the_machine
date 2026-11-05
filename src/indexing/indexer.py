@@ -1,8 +1,8 @@
 """BM25 indexing engine over code and documentation chunks."""
 
 import json
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Any
 
 import bm25s

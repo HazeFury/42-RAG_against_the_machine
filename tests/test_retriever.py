@@ -1,6 +1,7 @@
 """Unit tests for the LexicalRetriever and query processing."""
 
 from pathlib import Path
+
 import pytest
 
 from src.indexing.indexer import build_index
@@ -68,8 +69,11 @@ def test_retriever_edge_cases(mock_index: Path) -> None:
     assert retriever.retrieve("", k=5) == []
     assert retriever.retrieve("   ", k=5) == []
 
-    # Pure punctuation
+    # Pure punctuation or numbers without letters
     assert retriever.retrieve("!@#$%^&*()", k=5) == []
+    assert retriever.retrieve("@#$%#@# #@$%@  $#%#% #@#%??.", k=5) == []
+    assert retriever.retrieve("123 456 789", k=5) == []
+    assert retriever.retrieve("0", k=5) == []
 
     # Invalid k
     assert retriever.retrieve("scheduler", k=0) == []

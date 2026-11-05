@@ -1,9 +1,9 @@
 """RAG Pipeline orchestrator connecting indexing, retrieval, and generation."""
 
-from pathlib import Path
-from typing import Optional
 import uuid
+from pathlib import Path
 
+from pydantic import ValidationError
 from tqdm import tqdm
 
 from src.evaluation.evaluator import (
@@ -30,10 +30,10 @@ class RagPipeline:
 
     def __init__(self) -> None:
         """Initialize the pipeline with lazy loaded components."""
-        self._retriever: Optional[LexicalRetriever] = None
-        self._retriever_index_dir: Optional[Path] = None
-        self._generator: Optional[LLMGenerator] = None
-        self._context_builder: Optional[ContextBuilder] = None
+        self._retriever: LexicalRetriever | None = None
+        self._retriever_index_dir: Path | None = None
+        self._generator: LLMGenerator | None = None
+        self._context_builder: ContextBuilder | None = None
 
     def _get_generator(
         self, model_name: str = "Qwen/Qwen3-0.6B"
@@ -139,7 +139,7 @@ class RagPipeline:
         k: int = 10,
         save_directory: str | Path = "data/output/search_results",
         index_dir: str | Path = "data/processed",
-    ) -> Optional[str]:
+    ) -> str | None:
         """Search index in batch for an entire question dataset.
 
         Args:
@@ -157,7 +157,7 @@ class RagPipeline:
 
         try:
             dataset = RagDataset.model_validate(raw_data)
-        except Exception:
+        except (ValidationError, ValueError, TypeError, KeyError):
             return None
 
         retriever = self._get_retriever(index_dir=index_dir)
@@ -172,10 +172,18 @@ class RagPipeline:
                 questions.append(str(getattr(q, "question", "")))
                 question_ids.append(str(getattr(q, "question_id", "")))
 
+        dataset_stem = Path(dataset_path).stem.lower()
+        doc_type: str | None = None
+        if "doc" in dataset_stem:
+            doc_type = "docs"
+        elif "code" in dataset_stem:
+            doc_type = "code"
+
         batch_sources = retriever.retrieve_batch(
             queries=questions,
             k=k,
             show_progress=True,
+            doc_type=doc_type,
         )
 
         search_results: list[MinimalSearchResults] = []
@@ -209,7 +217,7 @@ class RagPipeline:
         k: int = 5,
         index_dir: str | Path = "data/processed",
         model_name: str = "Qwen/Qwen3-0.6B",
-    ) -> Optional[MinimalAnswer]:
+    ) -> MinimalAnswer | None:
         """Retrieve sources and generate an answer for a single query.
 
         Args:
@@ -245,7 +253,7 @@ class RagPipeline:
         student_search_results_path: str | Path,
         save_directory: str | Path = "data/output/search_results_and_answer",
         model_name: str = "Qwen/Qwen3-0.6B",
-    ) -> Optional[str]:
+    ) -> str | None:
         """Generate answers in batch from precomputed search results.
 
         Args:
@@ -262,7 +270,7 @@ class RagPipeline:
 
         try:
             student_results = StudentSearchResults.model_validate(raw_data)
-        except Exception:
+        except (ValidationError, ValueError, TypeError, KeyError):
             return None
 
         generator = self._get_generator(model_name=model_name)
@@ -304,7 +312,7 @@ class RagPipeline:
         self,
         student_search_results_path: str | Path,
         dataset_path: str | Path,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Evaluate student search results against ground-truth dataset.
 
         Args:
@@ -320,7 +328,7 @@ class RagPipeline:
 
         try:
             student_res = StudentSearchResults.model_validate(res_data)
-        except Exception:
+        except (ValidationError, ValueError, TypeError, KeyError):
             return None
 
         scores = evaluate_files(student_search_results_path, dataset_path)

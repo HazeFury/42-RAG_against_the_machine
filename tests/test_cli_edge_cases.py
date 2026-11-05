@@ -1,6 +1,7 @@
 """Unit tests for CLI robustness and edge cases handling."""
 
 from pathlib import Path
+
 from src.cli import RAGCLI
 
 
@@ -8,8 +9,10 @@ def test_cli_index_edge_cases(capsys: object) -> None:
     """Index should reject negative chunk sizes or missing directories."""
     cli = RAGCLI()
 
-    # Negative chunk size
+    # Chunk size out of [100, 2000] bounds
     cli.index(max_chunk_size=-10)
+    cli.index(max_chunk_size=10)
+    cli.index(max_chunk_size=2500)
 
     # Missing corpus directory
     cli.index(corpus_dir="non_existent_directory_xyz")
@@ -23,12 +26,23 @@ def test_cli_search_edge_cases() -> None:
     cli.search(query="")
     cli.search(query="   ")
 
+    # Special characters or digits only
+    cli.search(query="@#$%#@# #@$%@  $#%#% #@#%??.")
+    cli.search(query="123 456 789")
+
+    # Less than 3 words
+    cli.search(query="vllm config")
+
     # k <= 0
-    cli.search(query="vllm config", k=0)
-    cli.search(query="vllm config", k=-5)
+    cli.search(query="vllm config engine", k=0)
+    cli.search(query="vllm config engine", k=-5)
 
     # Missing index directory
-    cli.search(query="valid query", k=5, index_dir="missing_index_dir_xyz")
+    cli.search(
+        query="valid search query",
+        k=5,
+        index_dir="missing_index_dir_xyz",
+    )
 
 
 def test_cli_search_dataset_edge_cases() -> None:
@@ -49,8 +63,15 @@ def test_cli_answer_edge_cases() -> None:
     # Empty query
     cli.answer(query="")
 
+    # Special characters or digits only
+    cli.answer(query="@#$%#@# #@$%@  $#%#% #@#%??.")
+    cli.answer(query="123 456 789")
+
+    # Less than 3 words
+    cli.answer(query="vllm config")
+
     # k <= 0
-    cli.answer(query="How to run?", k=0)
+    cli.answer(query="How to run properly?", k=0)
 
 
 def test_cli_answer_dataset_edge_cases() -> None:

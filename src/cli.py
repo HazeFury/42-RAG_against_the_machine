@@ -1,8 +1,14 @@
 """Command-Line Interface for the RAG system using Python Fire."""
 
-from pathlib import Path
+import re
 import sys
+from pathlib import Path
 
+from src.config import (
+    DEFAULT_MAX_CHUNK_SIZE,
+    MAX_MAX_CHUNK_SIZE,
+    MIN_MAX_CHUNK_SIZE,
+)
 from src.pipeline import RagPipeline
 
 
@@ -15,7 +21,7 @@ class RAGCLI:
 
     def index(
         self,
-        max_chunk_size: int = 2000,
+        max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE,
         corpus_dir: str = "data/raw",
         output_dir: str = "data/processed",
     ) -> None:
@@ -27,9 +33,14 @@ class RAGCLI:
             output_dir: Path to directory where index will be stored.
         """
         try:
-            if max_chunk_size <= 0:
+            if (
+                max_chunk_size < MIN_MAX_CHUNK_SIZE
+                or max_chunk_size > MAX_MAX_CHUNK_SIZE
+            ):
                 print(
-                    "Error: max_chunk_size must be a positive integer.",
+                    "Error: max_chunk_size must be between "
+                    f"{MIN_MAX_CHUNK_SIZE} and {MAX_MAX_CHUNK_SIZE} "
+                    f"characters (got {max_chunk_size}).",
                     file=sys.stderr,
                 )
                 return
@@ -65,6 +76,22 @@ class RAGCLI:
         try:
             if not query or not query.strip():
                 print("No search query provided. Returning 0 results.")
+                return
+
+            words = [
+                w
+                for w in re.findall(r"[a-zA-Z0-9_]+", query)
+                if re.search(r"[a-zA-Z]", w)
+            ]
+            if not words:
+                print(
+                    "Query contains only special characters or symbols. "
+                    "Returning 0 results."
+                )
+                return
+
+            if len(words) < 3:
+                print("Less than 3 words provided. Returning 0 results.")
                 return
 
             if k <= 0:
@@ -154,6 +181,22 @@ class RAGCLI:
                 print("No query provided.")
                 return
 
+            words = [
+                w
+                for w in re.findall(r"[a-zA-Z0-9_]+", query)
+                if re.search(r"[a-zA-Z]", w)
+            ]
+            if not words:
+                print(
+                    "Query contains only special characters or symbols. "
+                    "Returning 0 results."
+                )
+                return
+
+            if len(words) < 3:
+                print("Less than 3 words provided. Returning 0 results.")
+                return
+
             if k <= 0:
                 print("Requested k <= 0. Cannot retrieve context.")
                 return
@@ -168,14 +211,13 @@ class RAGCLI:
                 print("Error: Failed to generate answer.", file=sys.stderr)
                 return
 
-            print(f"Question: {ans.question}\n")
-            print("Retrieved sources:")
+            print(ans.answer)
+            print("\n\nRetrieved sources:")
             for i, src in enumerate(ans.retrieved_sources, 1):
                 print(
                     f"  {i}. {src.file_path} "
                     f"[{src.first_character_index}:{src.last_character_index}]"
                 )
-            print(f"\nAnswer:\n{ans.answer}")
         except Exception as e:
             print(f"Error during answering: {e}", file=sys.stderr)
 
