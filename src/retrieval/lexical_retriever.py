@@ -1,6 +1,7 @@
 """Lexical retrieval engine based on BM25 and spatial deduplication."""
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -79,7 +80,7 @@ class LexicalRetriever:
             return []
 
         clean_query = query.strip()
-        if not clean_query:
+        if not clean_query or not re.search(r"[a-zA-Z]", clean_query):
             return []
 
         q_tokens = tokenize(clean_query)
@@ -138,11 +139,12 @@ class LexicalRetriever:
         valid_query_mask: list[bool] = []
 
         for q in queries:
-            if not q.strip():
+            clean_q = q.strip()
+            if not clean_q or not re.search(r"[a-zA-Z]", clean_q):
                 tokenized_batch.append([])
                 valid_query_mask.append(False)
             else:
-                toks = tokenize(q.strip())
+                toks = tokenize(clean_q)
                 tokenized_batch.append(toks)
                 valid_query_mask.append(len(toks) > 0)
 
