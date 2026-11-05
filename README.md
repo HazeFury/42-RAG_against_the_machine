@@ -164,7 +164,7 @@ A code file and a documentation page exhibit fundamentally different structural 
 2. **Markdown & Documentation Chunking (`chunk_markdown_text`)**:
    - Splits hierarchically along Markdown headers (`#`, `##`, `###`), followed by paragraph boundaries (`\n\n`), and line breaks (`\n`).
 3. **Hard Bounds Invariant**:
-   - For every chunk: $0 \le \text{first\_char} < \text{last\_char} \le \text{len}(\text{file})$ and $\text{last\_char} - \text{first\_char} \le 2000$.
+   - For every chunk: `0 <= first_char < last_char <= len(file)` and `last_char - first_char <= 2000`.
    - Slices are extracted verbatim from raw text strings to prevent character offset drift.
 
 ---
