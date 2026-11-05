@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from src.generation.llm_generator import LLMGenerator, SYSTEM_PROMPT
+from src.generation.llm_generator import SYSTEM_PROMPT, LLMGenerator
 
 
 def test_generator_lazy_initialization() -> None:

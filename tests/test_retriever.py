@@ -1,6 +1,7 @@
 """Unit tests for the LexicalRetriever and query processing."""
 
 from pathlib import Path
+
 import pytest
 
 from src.indexing.indexer import build_index

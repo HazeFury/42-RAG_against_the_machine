@@ -1,6 +1,7 @@
 """Unit tests for CLI robustness and edge cases handling."""
 
 from pathlib import Path
+
 from src.cli import RAGCLI
 
 
