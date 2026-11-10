@@ -13,7 +13,7 @@ _This project has been created as part of the 42 curriculum by marberge._
 
 <img src="https://img.shields.io/badge/Project-000000?style=for-the-badge&logo=42&logoColor=white" alt="42" />
 	<img src="https://img.shields.io/badge/Language-Python-00599C?style=for-the-badge&logo=&logoColor=white" alt="Python" />
-	<img src="https://img.shields.io/badge/Score-Pending-yellow?style=for-the-badge&logoColor=white" alt="Score" />
+	<img src="https://img.shields.io/badge/Score-100/100-green?style=for-the-badge&logoColor=white" alt="Score" />
 	<br>
 	<img src="https://img.shields.io/badge/IA-darkviolet?style=for-the-badge" alt="IA" />
 	<img src="https://img.shields.io/badge/RAG-darkviolet?style=for-the-badge" alt="RAG" />
